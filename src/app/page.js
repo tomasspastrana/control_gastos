@@ -24,9 +24,11 @@ const appIdPath = 'control-de-gastos-app'; // Un ID simple para la ruta de la ba
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
 
 // --- Datos y Categorías Iniciales ---
+// CORREGIDO: Se restauraron los nombres originales de las tarjetas.
 const datosIniciales = [
-  { nombre: 'Tarjeta Principal', limite: 700000, saldo: 700000, compras: [] },
-  { nombre: 'Tarjeta Secundaria', limite: 290000, saldo: 290000, compras: [] },
+  { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
+  { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
+  { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
 ];
 const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
@@ -70,6 +72,7 @@ function AuthWrapper() {
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setAuthUserId(user.uid);
+                // Solo establece el ID activo si aún no se ha cargado uno.
                 if (!activeUserId) setActiveUserId(user.uid);
             } else {
                 setAuthUserId(null);
@@ -86,6 +89,7 @@ function AuthWrapper() {
 
   // Efecto para cargar los datos del usuario activo
   useEffect(() => {
+    // No hacer nada si no tenemos la base de datos lista o un ID que cargar.
     if (!db || !activeUserId) return;
 
     setLoading(true);
@@ -99,11 +103,13 @@ function AuthWrapper() {
             setTarjetaSeleccionada(prev => data.tarjetas.some(t => t.nombre === prev) ? prev : data.tarjetas[0].nombre);
         }
       } else {
-        if (activeUserId === authUserId) { // Solo crea datos si estamos viendo nuestro propio ID nuevo
+        // Si el documento no existe Y estamos viendo nuestro PROPIO ID, creamos los datos iniciales.
+        if (activeUserId === authUserId && authUserId !== null) {
           await setDoc(userDocRef, { tarjetas: datosIniciales });
           setTarjetas(datosIniciales);
           setTarjetaSeleccionada(datosIniciales[0]?.nombre || null);
         } else {
+          // Si cargamos un ID de otro que no existe, mostramos la lista vacía.
           setTarjetas([]);
           setTarjetaSeleccionada(null);
           console.warn("El ID cargado no tiene datos.");
@@ -116,7 +122,7 @@ function AuthWrapper() {
     });
 
     return () => unsubscribeSnapshot();
-  }, [db, activeUserId, authUserId]);
+  }, [db, activeUserId]); // CORREGIDO: Dependencia simplificada para mayor estabilidad.
 
 
   const saveToFirebase = async (updatedTarjetas) => {
@@ -254,8 +260,8 @@ function AuthWrapper() {
           <div className="flex items-center space-x-2 mt-1">
             <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0_0_24_24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8_16H6a2_2_0_01-2-2V6a2_2_0_012-2h8a2_2_0_012_2v2m-6_12h8a2_2_0_002-2v-8a2_2_0_00-2-2h-8a2_2_0_00-2_2v8a2_2_0_002_2z" />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </button>
           </div>
