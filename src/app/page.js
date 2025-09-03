@@ -264,9 +264,10 @@ function AuthWrapper() {
 
   const resumenMes = useMemo(() => {
     if (!tarjetaActiva) return 0;
+    // Usamos parseFloat para asegurar que la suma sea numérica y evitar errores de concatenación.
     return tarjetaActiva.compras.reduce((total, compra) => {
       if (compra.cuotasRestantes > 0 && !compra.postergada) {
-        return total + compra.montoCuota;
+        return total + parseFloat(compra.montoCuota);
       }
       return total;
     }, 0);
@@ -349,7 +350,7 @@ function AuthWrapper() {
             <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 S0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </button>
           </div>
@@ -400,8 +401,6 @@ function AuthWrapper() {
 
       {tarjetaActiva && (
         <>
-            {/* ***** CAMBIO VISUAL: Este bloque ahora es condicional ***** */}
-            {/* Solo se muestra si el nombre de la tarjeta NO incluye "BBVA" */}
             {!tarjetaActiva.nombre.includes('BBVA') && (
               <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
                   <div className="flex justify-between items-center mb-2">
@@ -427,7 +426,7 @@ function AuthWrapper() {
                     Resumen del Mes
                 </h2>
                 <p className="text-3xl sm:text-4xl font-extrabold text-blue-400">
-                    $ {resumenMes.toLocaleString('es-AR')}
+                    $ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <button 
                     onClick={handlePagarResumen} 
@@ -531,9 +530,13 @@ function AuthWrapper() {
                             </div>
                             <p className="text-sm text-gray-400">{compra.categoria}</p>
                             <p className="text-base text-gray-200">
-                                $ {compra.montoTotal.toLocaleString('es-AR')} en {compra.cuotas} cuota(s)
+                                Total: $ {compra.montoTotal.toLocaleString('es-AR')} ({compra.cuotas} cuotas)
                             </p>
-                            <p className="text-sm text-teal-400 italic">
+                            {/* ***** CAMBIO VISUAL: Mostramos el valor de la cuota ***** */}
+                            <p className="text-base text-cyan-400">
+                                Valor cuota: $ {compra.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-sm text-gray-400 italic mt-1">
                                 Cuotas restantes: {compra.cuotasRestantes}
                             </p>
                         </div>
