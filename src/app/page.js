@@ -42,6 +42,9 @@ function AuthWrapper() {
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
 
+  // ***** CAMBIO #1: Nuevo estado para el checkbox *****
+  const [postergada, setPostergada] = useState(false);
+
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
     if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
@@ -160,7 +163,9 @@ function AuthWrapper() {
       cuotas: cuotasNum,
       montoCuota: montoNum / cuotasNum,
       cuotasRestantes: cuotasNum,
-      pagada: false, // Las compras nuevas nunca están pagadas.
+      pagada: false,
+      // ***** CAMBIO #2: Guardamos el estado de postergación *****
+      postergada: postergada, 
     };
 
     const tarjetasActualizadas = tarjetas.map(t => {
@@ -186,6 +191,7 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
     setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     setCompraEnEdicion(null);
+    setPostergada(false); // Reseteamos el checkbox
   };
     
   const eliminarCompra = (compraIndex) => {
@@ -215,6 +221,7 @@ function AuthWrapper() {
       categoria: compraAEditar.categoria
     });
     setCompraEnEdicion(compraIndex);
+    setPostergada(compraAEditar.postergada || false);
   };
 
   const handleRecalcularSaldo = () => {
@@ -251,7 +258,8 @@ function AuthWrapper() {
   const resumenMes = useMemo(() => {
     if (!tarjetaActiva) return 0;
     return tarjetaActiva.compras.reduce((total, compra) => {
-      if (compra.cuotasRestantes > 0) {
+      // ***** CAMBIO #3: El resumen ignora las compras postergadas *****
+      if (compra.cuotasRestantes > 0 && !compra.postergada) {
         return total + compra.montoCuota;
       }
       return total;
@@ -262,15 +270,21 @@ function AuthWrapper() {
     if (!tarjetaActiva || resumenMes <= 0) return;
 
     const comprasDespuesDelPago = tarjetaActiva.compras.map(compra => {
-        if (compra.cuotasRestantes > 0) {
-            const nuevasCuotasRestantes = compra.cuotasRestantes - 1;
-            return {
-                ...compra,
-                cuotasRestantes: nuevasCuotasRestantes,
-                pagada: nuevasCuotasRestantes === 0
-            };
+        let updatedCompra = { ...compra };
+        
+        // Si la compra formó parte del resumen, le restamos una cuota.
+        if (updatedCompra.cuotasRestantes > 0 && !updatedCompra.postergada) {
+            const nuevasCuotasRestantes = updatedCompra.cuotasRestantes - 1;
+            updatedCompra.cuotasRestantes = nuevasCuotasRestantes;
+            updatedCompra.pagada = nuevasCuotasRestantes === 0;
         }
-        return compra;
+
+        // ***** CAMBIO #4: Activamos las compras postergadas para el próximo mes *****
+        if (updatedCompra.postergada) {
+            updatedCompra.postergada = false;
+        }
+
+        return updatedCompra;
     });
 
     const tarjetasActualizadas = tarjetas.map(t => {
@@ -284,8 +298,6 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
   };
 
-  // ***** NUEVA FUNCIÓN (RESTAURADA) *****
-  // Permite pagar una cuota individual de cualquier compra.
   const handlePagarCuota = (compraIndex) => {
     const compra = tarjetaActiva?.compras[compraIndex];
     if (!compra || compra.cuotasRestantes <= 0) return;
@@ -454,6 +466,17 @@ function AuthWrapper() {
                       <option key={cat} value={cat}>{cat}</option>
                       ))}
                   </select>
+                  {/* ***** CAMBIO #5: El nuevo checkbox para postergar ***** */}
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <input 
+                        type="checkbox"
+                        id="postergada-checkbox"
+                        checked={postergada}
+                        onChange={(e) => setPostergada(e.target.checked)}
+                        className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500"
+                    />
+                    <label htmlFor="postergada-checkbox">Pagar en el próximo resumen</label>
+                  </div>
                   <button 
                       type="submit" 
                       className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md"
@@ -486,9 +509,10 @@ function AuthWrapper() {
                     {tarjetaActiva.compras.map((compra, index) => (
                     <li key={index} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3">
                         <div className={compra.pagada ? 'opacity-50' : ''}>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-bold text-lg">{compra.descripcion}</p>
                                 {compra.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
+                                {compra.postergada && <span className="text-xs font-bold text-black bg-yellow-400 px-2 py-1 rounded-full">POSTERGADA</span>}
                             </div>
                             <p className="text-sm text-gray-400">{compra.categoria}</p>
                             <p className="text-base text-gray-200">
@@ -499,8 +523,6 @@ function AuthWrapper() {
                             </p>
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                            {/* ***** CAMBIO VISUAL ***** */}
-                            {/* El botón de Pagar Cuota individual ha vuelto */}
                             {compra.cuotasRestantes > 0 && (
                                 <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
                             )}
