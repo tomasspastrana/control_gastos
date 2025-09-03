@@ -1,21 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+// ¡CORREGIDO! Se importan los módulos de Firebase desde los paquetes npm, no desde URLs.
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
+// Estas variables se obtienen del entorno de ejecución (como Vercel o tu entorno local).
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// --- Datos y Categorías Iniciales ---
+// Datos iniciales si el usuario no tiene datos guardados.
 const datosIniciales = [
   { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
   { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
   { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
 ];
+
 const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
 function AuthWrapper() {
@@ -23,16 +26,13 @@ function AuthWrapper() {
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [nuevaCompra, setNuevaCompra] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
   const [compraEnEdicion, setCompraEnEdicion] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [db, setDb] = useState(null);
-  
-  // --- NUEVOS ESTADOS PARA MANEJAR IDs ---
-  const [authUserId, setAuthUserId] = useState(null); // El ID de este dispositivo
-  const [activeUserId, setActiveUserId] = useState(null); // El ID de los datos que estamos viendo
-  const [idParaCargar, setIdParaCargar] = useState(''); // El valor del input para cargar un ID
 
-  // Efecto 1: Se ejecuta una sola vez para inicializar Firebase y la autenticación.
+  // --- Efecto para inicializar Firebase y manejar la autenticación y datos ---
   useEffect(() => {
+    // Se asegura que la configuración de Firebase exista antes de continuar.
     if (!firebaseConfig.projectId) {
       console.error("La configuración de Firebase no está disponible. Usando datos locales.");
       setTarjetas(datosIniciales);
@@ -44,8 +44,9 @@ function AuthWrapper() {
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const firestore = getFirestore(app);
-    setDb(firestore);
+    setDb(firestore); // Guardamos la instancia de firestore para usarla después
 
+    // Iniciar sesión de forma anónima o con token
     const signInUser = async () => {
       try {
         if (initialAuthToken) {
@@ -55,84 +56,64 @@ function AuthWrapper() {
         }
       } catch (error) {
         console.error("Error en la autenticación con Firebase:", error);
+        setLoading(false);
       }
     };
+
     signInUser();
 
+    // Listener para cambios en el estado de autenticación
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // Guardamos el ID propio del dispositivo y lo establecemos como el activo por defecto.
-        setAuthUserId(user.uid);
-        setActiveUserId(user.uid);
+        setUserId(user.uid);
+        const userDocRef = doc(firestore, `artifacts/${appId}/users/${user.uid}/data/tarjetas`);
+
+        // Listener para cambios en los datos del usuario en tiempo real
+        const unsubscribeSnapshot = onSnapshot(userDocRef, async (snapshot) => {
+          if (snapshot.exists()) {
+            // Si el usuario ya tiene datos, los cargamos
+            const data = snapshot.data();
+            setTarjetas(data.tarjetas || []);
+            // Se selecciona la primera tarjeta si no hay ninguna seleccionada
+            if (!tarjetaSeleccionada && data.tarjetas?.length > 0) {
+              setTarjetaSeleccionada(data.tarjetas[0].nombre);
+            }
+          } else {
+            // Si es un usuario nuevo, creamos su documento con los datos iniciales
+            await setDoc(userDocRef, { tarjetas: datosIniciales });
+            setTarjetas(datosIniciales);
+            setTarjetaSeleccionada(datosIniciales[0]?.nombre || null);
+          }
+          setLoading(false);
+        }, (error) => {
+            console.error("Error al obtener datos de Firestore:", error);
+            setLoading(false);
+        });
+
+        // La función de limpieza de onAuthStateChanged debe devolver la limpieza del snapshot
+        return () => unsubscribeSnapshot();
       } else {
-        setAuthUserId(null);
-        setActiveUserId(null);
+        // Si el usuario no está autenticado
+        setUserId(null);
+        setTarjetas([]);
+        setLoading(false);
       }
     });
 
+    // Función de limpieza principal: se ejecuta cuando el componente se desmonta
     return () => unsubscribeAuth();
-  }, []);
-
-  // Efecto 2: Se ejecuta cada vez que cambia el ID activo para cargar sus datos.
-  useEffect(() => {
-    if (!db || !activeUserId) {
-      if (!firebaseConfig.projectId){ setLoading(false) };
-      return;
-    }
-
-    setLoading(true);
-    const userDocRef = doc(db, `artifacts/${appId}/users/${activeUserId}/data/tarjetas`);
-
-    const unsubscribeSnapshot = onSnapshot(userDocRef, async (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setTarjetas(data.tarjetas || []);
-        if (data.tarjetas && data.tarjetas.length > 0) {
-          // Mantiene la tarjeta seleccionada si aún existe, si no, selecciona la primera.
-          const currentSelectionExists = data.tarjetas.some(t => t.nombre === tarjetaSeleccionada);
-          setTarjetaSeleccionada(currentSelectionExists ? tarjetaSeleccionada : data.tarjetas[0].nombre);
-        }
-      } else {
-        // Si el ID no tiene datos (puede ser un usuario nuevo o un ID incorrecto)
-        if (activeUserId === authUserId) {
-          // Si es el ID propio del dispositivo, crea los datos iniciales.
-          await setDoc(userDocRef, { tarjetas: datosIniciales });
-          setTarjetas(datosIniciales);
-          setTarjetaSeleccionada(datosIniciales[0]?.nombre || null);
-        } else {
-          // Si es un ID cargado que no existe, muestra un error y revierte.
-          console.warn("El ID cargado no tiene datos.");
-          setTarjetas([]); // Vacía los datos para evitar confusión
-        }
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error al obtener datos de Firestore:", error);
-      alert(`Error al cargar datos para el ID: ${activeUserId}. Asegúrate de que sea correcto.`);
-      setActiveUserId(authUserId); // Revierte al ID original en caso de error
-      setLoading(false);
-    });
-
-    return () => unsubscribeSnapshot();
-  }, [db, activeUserId, authUserId]);
-
+  }, []); // El array vacío asegura que este efecto se ejecute solo una vez.
 
   // --- Funciones para manipular los datos ---
+
   const saveToFirebase = async (updatedTarjetas) => {
-    // Siempre guarda los datos en el ID que está activo.
-    if (activeUserId && db) {
-      const userDocRef = doc(db, `artifacts/${appId}/users/${activeUserId}/data/tarjetas`);
+    if (userId && db) {
+      const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data/tarjetas`);
       try {
         await setDoc(userDocRef, { tarjetas: updatedTarjetas });
       } catch (e) {
         console.error("Error al guardar en Firebase: ", e);
       }
-    }
-  };
-  
-  const handleCargarId = () => {
-    if (idParaCargar && idParaCargar.trim() !== '' && idParaCargar.trim() !== activeUserId) {
-      setActiveUserId(idParaCargar.trim());
     }
   };
 
@@ -141,8 +122,9 @@ function AuthWrapper() {
   const guardarCompra = (e) => {
     e.preventDefault();
     if (nuevaCompra.monto > 0 && nuevaCompra.descripcion) {
+      // Se limpian y validan los datos de la nueva compra.
       const montoNum = parseFloat(nuevaCompra.monto);
-      const cuotasNum = Number.isInteger(parseInt(nuevaCompra.cuotas)) && nuevaCompra.cuotas > 0 ? parseInt(nuevaCompra.cuotas) : 1;
+      const cuotasNum = Number.isInteger(nuevaCompra.cuotas) && nuevaCompra.cuotas > 0 ? nuevaCompra.cuotas : 1;
       const montoCuota = montoNum / cuotasNum;
       
       const compraFinal = {
@@ -160,15 +142,17 @@ function AuthWrapper() {
           let comprasActualizadas;
 
           if (compraEnEdicion !== null) {
+            // Lógica para editar una compra existente
             const compraOriginal = t.compras[compraEnEdicion];
-            saldoActualizado += compraOriginal.montoTotal;
+            saldoActualizado += compraOriginal.montoTotal; // Devolvemos el saldo original
             comprasActualizadas = [...t.compras];
-            comprasActualizadas[compraEnEdicion] = compraFinal;
+            comprasActualizadas[compraEnEdicion] = compraFinal; // <-- CORREGIDO: Se usa la variable correcta
           } else {
-            comprasActualizadas = [...t.compras, compraFinal];
+             // Lógica para añadir una nueva compra
+            comprasActualizadas = [...t.compras, compraFinal]; // <-- CORREGIDO: Se usa la variable correcta
           }
 
-          saldoActualizado -= compraFinal.montoTotal;
+          saldoActualizado -= compraFinal.montoTotal; // <-- CORREGIDO: Se usa la variable correcta
 
           return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
         }
@@ -225,7 +209,7 @@ function AuthWrapper() {
     const compraAEditar = tarjetaActiva.compras[compraIndex];
     setNuevaCompra({
       descripcion: compraAEditar.descripcion,
-      monto: compraAEditar.montoTotal,
+      monto: compraAEditar.montoTotal, // Usar montoTotal para la edición
       cuotas: compraAEditar.cuotas,
       categoria: compraAEditar.categoria
     });
@@ -238,9 +222,9 @@ function AuthWrapper() {
   }, {});
   
   const handleCopyToClipboard = () => {
-    if (authUserId) {
+    if (userId) {
       const tempTextArea = document.createElement('textarea');
-      tempTextArea.value = authUserId;
+      tempTextArea.value = userId;
       document.body.appendChild(tempTextArea);
       tempTextArea.select();
       document.execCommand('copy');
@@ -252,45 +236,32 @@ function AuthWrapper() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white font-sans">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-teal-500"></div>
-        <p className="mt-4 text-gray-400">Cargando datos...</p>
+        <p className="mt-4 text-gray-400">Cargando tus datos...</p>
       </main>
     );
   }
 
+  // --- Renderizado del componente ---
   return (
     <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12 lg:p-24 bg-gray-900 text-white font-sans">
       <h1 className="text-3xl sm:text-4xl font-bold mb-4 sm:mb-8 text-center text-teal-400 drop-shadow-lg">
         Control de Gastos 💳
       </h1>
 
-      {authUserId && (
+      {userId && (
         <div className="bg-gray-800 p-4 rounded-xl shadow-md w-full max-w-sm sm:max-w-md mb-8 flex flex-col items-center border-t-4 border-teal-500">
-          <p className="text-sm text-gray-400">ID de este Dispositivo (para compartir):</p>
+          <p className="text-sm text-gray-400">Tu ID de Usuario (para compartir):</p>
           <div className="flex items-center space-x-2 mt-1">
-            <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
+            <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{userId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </button>
           </div>
-          <div className="w-full mt-4">
-              <p className="text-sm text-gray-400 mb-1">Cargar datos desde otro ID:</p>
-              <div className="flex items-center space-x-2">
-                  <input 
-                    type="text" 
-                    placeholder="Pega un ID aquí" 
-                    value={idParaCargar}
-                    onChange={(e) => setIdParaCargar(e.target.value)}
-                    className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-                  />
-                  <button onClick={handleCargarId} className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
-              </div>
-          </div>
         </div>
       )}
 
-      {/* El resto de la UI no cambia */}
       <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
           Seleccionar Tarjeta
@@ -299,14 +270,13 @@ function AuthWrapper() {
           value={tarjetaSeleccionada || ''} 
           onChange={(e) => setTarjetaSeleccionada(e.target.value)}
           className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300 ease-in-out"
-          disabled={!tarjetaActiva}
         >
           {tarjetas.length > 0 ? (
             tarjetas.map(t => (
               <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
             ))
           ) : (
-            <option value="" disabled>No hay datos para mostrar</option>
+            <option value="" disabled>No hay tarjetas</option>
           )}
         </select>
       </div>
