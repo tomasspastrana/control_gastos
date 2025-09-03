@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -27,7 +27,7 @@ const datosIniciales = [
   { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
   { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
 ];
-const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
+const categoriasDisponibles = ['Electrodomésticos', 'Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Regalos'];
 
 function AuthWrapper() {
   const [tarjetas, setTarjetas] = useState([]);
@@ -160,6 +160,7 @@ function AuthWrapper() {
       cuotas: cuotasNum,
       montoCuota: montoNum / cuotasNum,
       cuotasRestantes: cuotasNum,
+      pagada: false, // Las compras nuevas nunca están pagadas.
     };
 
     const tarjetasActualizadas = tarjetas.map(t => {
@@ -168,7 +169,6 @@ function AuthWrapper() {
         let comprasActualizadas;
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          // Primero, restauramos el saldo pendiente de la compra original para no inflar el límite.
           const montoPendienteOriginal = compraOriginal.montoCuota * compraOriginal.cuotasRestantes;
           saldoActualizado += montoPendienteOriginal;
           
@@ -177,7 +177,6 @@ function AuthWrapper() {
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
-        // Restamos el monto total de la nueva compra (o la compra editada).
         saldoActualizado -= compraFinal.montoTotal;
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
@@ -189,21 +188,6 @@ function AuthWrapper() {
     setCompraEnEdicion(null);
   };
     
-  const pagarCuota = (compraIndex) => {
-    const compra = tarjetaActiva?.compras[compraIndex];
-    if (!compra || compra.cuotasRestantes <= 0) return;
-
-    const tarjetasActualizadas = tarjetas.map(t =>
-      t.nombre === tarjetaSeleccionada
-        ? { ...t, 
-            saldo: t.saldo + compra.montoCuota, 
-            compras: t.compras.map((c, i) => i === compraIndex ? { ...c, cuotasRestantes: c.cuotasRestantes - 1 } : c) 
-          }
-        : t
-    );
-    saveToFirebase(tarjetasActualizadas);
-  };
-
   const eliminarCompra = (compraIndex) => {
     const compraAEliminar = tarjetaActiva?.compras[compraIndex];
     if (!compraAEliminar) return;
@@ -262,6 +246,47 @@ function AuthWrapper() {
         setCopySuccess('¡ID Copiado!');
         setTimeout(() => setCopySuccess(''), 2000);
     });
+  };
+
+  const resumenMes = useMemo(() => {
+    if (!tarjetaActiva) return 0;
+    return tarjetaActiva.compras.reduce((total, compra) => {
+      if (compra.cuotasRestantes > 0) {
+        return total + compra.montoCuota;
+      }
+      return total;
+    }, 0);
+  }, [tarjetaActiva]);
+
+  // ***** CAMBIO IMPORTANTE *****
+  // La lógica ahora no elimina compras, solo las actualiza.
+  const handlePagarResumen = () => {
+    if (!tarjetaActiva || resumenMes <= 0) return;
+
+    const comprasDespuesDelPago = tarjetaActiva.compras.map(compra => {
+        // Solo modificamos las compras que tienen cuotas pendientes
+        if (compra.cuotasRestantes > 0) {
+            const nuevasCuotasRestantes = compra.cuotasRestantes - 1;
+            return {
+                ...compra,
+                cuotasRestantes: nuevasCuotasRestantes,
+                // Si las cuotas llegan a 0, la marcamos como pagada
+                pagada: nuevasCuotasRestantes === 0
+            };
+        }
+        // Si no tenía cuotas pendientes, la devolvemos como estaba
+        return compra;
+    });
+
+    const tarjetasActualizadas = tarjetas.map(t => {
+      if (t.nombre === tarjetaSeleccionada) {
+        const nuevoSaldo = Math.min(t.limite, t.saldo + resumenMes);
+        return { ...t, saldo: nuevoSaldo, compras: comprasDespuesDelPago };
+      }
+      return t;
+    });
+
+    saveToFirebase(tarjetasActualizadas);
   };
 
   if (loading) {
@@ -354,6 +379,22 @@ function AuthWrapper() {
                 </p>
             </div>
 
+            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-blue-500">
+                <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                    Resumen del Mes
+                </h2>
+                <p className="text-3xl sm:text-4xl font-extrabold text-blue-400">
+                    $ {resumenMes.toLocaleString('es-AR')}
+                </p>
+                <button 
+                    onClick={handlePagarResumen} 
+                    disabled={resumenMes <= 0}
+                    className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed"
+                >
+                    Pagar Resumen
+                </button>
+            </div>
+
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                 <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
                     {compraEnEdicion !== null ? 'Editar Compra' : 'Añadir Nueva Compra'}
@@ -422,24 +463,23 @@ function AuthWrapper() {
                 <ul className="space-y-4">
                     {tarjetaActiva.compras.map((compra, index) => (
                     <li key={index} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3">
-                        <div>
-                        <p className="font-bold text-lg">{compra.descripcion}</p>
-                        <p className="text-sm text-gray-400">{compra.categoria}</p>
-                        <p className="text-base text-gray-200">
-                            $ {compra.montoTotal.toLocaleString('es-AR')} en {compra.cuotas} cuota(s)
-                        </p>
-                        {compra.cuotas > 1 && (
+                        {/* ***** CAMBIO VISUAL ***** */}
+                        {/* La opacidad cambia si la compra está pagada */}
+                        <div className={compra.pagada ? 'opacity-50' : ''}>
+                            <div className="flex items-center gap-2">
+                                <p className="font-bold text-lg">{compra.descripcion}</p>
+                                {compra.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
+                            </div>
+                            <p className="text-sm text-gray-400">{compra.categoria}</p>
+                            <p className="text-base text-gray-200">
+                                $ {compra.montoTotal.toLocaleString('es-AR')} en {compra.cuotas} cuota(s)
+                            </p>
                             <p className="text-sm text-teal-400 italic">
                                 Cuotas restantes: {compra.cuotasRestantes}
                             </p>
-                        )}
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                            {/* ESTA ES LA LÍNEA CORREGIDA */}
-                            {compra.cuotasRestantes > 0 && (
-                                <button onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar</button>
-                            )}
-                            <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium">Editar</button>
+                            <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={compra.pagada}>Editar</button>
                             <button onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
                         </div>
                     </li>
