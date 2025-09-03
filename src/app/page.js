@@ -27,7 +27,7 @@ const datosIniciales = [
   { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
   { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
 ];
-const categoriasDisponibles = ['Electrodomésticos', 'Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Regalos'];
+const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
 function AuthWrapper() {
   const [tarjetas, setTarjetas] = useState([]);
@@ -258,23 +258,18 @@ function AuthWrapper() {
     }, 0);
   }, [tarjetaActiva]);
 
-  // ***** CAMBIO IMPORTANTE *****
-  // La lógica ahora no elimina compras, solo las actualiza.
   const handlePagarResumen = () => {
     if (!tarjetaActiva || resumenMes <= 0) return;
 
     const comprasDespuesDelPago = tarjetaActiva.compras.map(compra => {
-        // Solo modificamos las compras que tienen cuotas pendientes
         if (compra.cuotasRestantes > 0) {
             const nuevasCuotasRestantes = compra.cuotasRestantes - 1;
             return {
                 ...compra,
                 cuotasRestantes: nuevasCuotasRestantes,
-                // Si las cuotas llegan a 0, la marcamos como pagada
                 pagada: nuevasCuotasRestantes === 0
             };
         }
-        // Si no tenía cuotas pendientes, la devolvemos como estaba
         return compra;
     });
 
@@ -286,6 +281,33 @@ function AuthWrapper() {
       return t;
     });
 
+    saveToFirebase(tarjetasActualizadas);
+  };
+
+  // ***** NUEVA FUNCIÓN (RESTAURADA) *****
+  // Permite pagar una cuota individual de cualquier compra.
+  const handlePagarCuota = (compraIndex) => {
+    const compra = tarjetaActiva?.compras[compraIndex];
+    if (!compra || compra.cuotasRestantes <= 0) return;
+
+    const tarjetasActualizadas = tarjetas.map(t => {
+        if (t.nombre === tarjetaSeleccionada) {
+            const nuevoSaldo = Math.min(t.limite, t.saldo + compra.montoCuota);
+            const comprasActualizadas = t.compras.map((c, i) => {
+                if (i === compraIndex) {
+                    const nuevasCuotasRestantes = c.cuotasRestantes - 1;
+                    return {
+                        ...c,
+                        cuotasRestantes: nuevasCuotasRestantes,
+                        pagada: nuevasCuotasRestantes === 0
+                    };
+                }
+                return c;
+            });
+            return { ...t, saldo: nuevoSaldo, compras: comprasActualizadas };
+        }
+        return t;
+    });
     saveToFirebase(tarjetasActualizadas);
   };
 
@@ -463,8 +485,6 @@ function AuthWrapper() {
                 <ul className="space-y-4">
                     {tarjetaActiva.compras.map((compra, index) => (
                     <li key={index} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3">
-                        {/* ***** CAMBIO VISUAL ***** */}
-                        {/* La opacidad cambia si la compra está pagada */}
                         <div className={compra.pagada ? 'opacity-50' : ''}>
                             <div className="flex items-center gap-2">
                                 <p className="font-bold text-lg">{compra.descripcion}</p>
@@ -479,6 +499,11 @@ function AuthWrapper() {
                             </p>
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
+                            {/* ***** CAMBIO VISUAL ***** */}
+                            {/* El botón de Pagar Cuota individual ha vuelto */}
+                            {compra.cuotasRestantes > 0 && (
+                                <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
+                            )}
                             <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={compra.pagada}>Editar</button>
                             <button onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
                         </div>
