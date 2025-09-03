@@ -1,38 +1,101 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
-// Define los datos iniciales por defecto, para que el servidor y el cliente tengan una base común.
+// Define the Firebase config variables
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+// Initial data to be used if the user has no saved data
 const datosIniciales = [
   { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
   { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
   { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
 ];
-// Lista de categorías para el menú desplegable
+
 const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
 export default function Home() {
-  const [tarjetas, setTarjetas] = useState(datosIniciales);
-  const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(datosIniciales[0].nombre);
+  const [tarjetas, setTarjetas] = useState([]);
+  const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [nuevaCompra, setNuevaCompra] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
   const [compraEnEdicion, setCompraEnEdicion] = useState(null); 
+  const [userId, setUserId] = useState(null);
+  const [loading, setLoading] = useState(true);
   
+  // Firebase initialization and authentication
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedData = localStorage.getItem('misTarjetas');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setTarjetas(parsedData);
-        setTarjetaSeleccionada(parsedData[0].nombre);
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    
+    // Sign in the user
+    const signIn = async () => {
+      try {
+        if (initialAuthToken) {
+          await signInWithCustomToken(auth, initialAuthToken);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Firebase Auth Error:", error);
       }
-    }
+    };
+    
+    signIn();
+
+    // Listen for auth state changes
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUserId(user.uid);
+        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/tarjetas`);
+
+        // Check if user has existing data
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+          // If no data exists, save the initial data
+          await setDoc(userDocRef, {
+            tarjetas: datosIniciales
+          });
+          setTarjetas(datosIniciales);
+          setTarjetaSeleccionada(datosIniciales[0].nombre);
+        } else {
+          // Listen to real-time changes
+          const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+            const data = snapshot.data();
+            if (data && data.tarjetas) {
+              setTarjetas(data.tarjetas);
+              setTarjetaSeleccionada(data.tarjetas[0]?.nombre || null);
+            } else {
+              setTarjetas(datosIniciales);
+              setTarjetaSeleccionada(datosIniciales[0].nombre);
+            }
+            setLoading(false);
+          });
+          // Cleanup listener on unmount
+          return () => unsubscribe();
+        }
+      }
+      setLoading(false);
+    });
   }, []);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('misTarjetas', JSON.stringify(tarjetas));
+  const saveToFirebase = async (updatedTarjetas) => {
+    if (userId) {
+      const db = getFirestore(initializeApp(firebaseConfig));
+      const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data/tarjetas`);
+      try {
+        await setDoc(userDocRef, { tarjetas: updatedTarjetas });
+      } catch (e) {
+        console.error("Error writing document: ", e);
+      }
     }
-  }, [tarjetas]);
+  };
 
   const tarjetaActiva = tarjetas.find(t => t.nombre === tarjetaSeleccionada);
 
@@ -54,17 +117,13 @@ export default function Home() {
           let comprasActualizadas = [...t.compras];
 
           if (compraEnEdicion !== null) {
-            // Lógica de edición
             const compraOriginal = t.compras[compraEnEdicion];
-            // Devuelve el saldo de la compra original antes de aplicar los cambios
             saldoActualizado = saldoActualizado + compraOriginal.montoTotal; 
             comprasActualizadas[compraEnEdicion] = compraConCuotas;
           } else {
-            // Lógica de adición
             comprasActualizadas = [...comprasActualizadas, compraConCuotas];
           }
 
-          // Resta el nuevo monto total
           saldoActualizado = saldoActualizado - compraConCuotas.montoTotal;
 
           return { 
@@ -77,8 +136,9 @@ export default function Home() {
       });
       
       setTarjetas(tarjetasActualizadas);
+      saveToFirebase(tarjetasActualizadas);
       setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
-      setCompraEnEdicion(null); // Sale del modo de edición
+      setCompraEnEdicion(null);
     }
   };
 
@@ -100,6 +160,7 @@ export default function Home() {
       );
       
       setTarjetas(tarjetasActualizadas);
+      saveToFirebase(tarjetasActualizadas);
     }
   };
 
@@ -117,6 +178,7 @@ export default function Home() {
         : t
     );
     setTarjetas(tarjetasActualizadas);
+    saveToFirebase(tarjetasActualizadas);
   };
 
   const iniciarEdicion = (compraIndex) => {
@@ -134,11 +196,57 @@ export default function Home() {
     resumen[compra.categoria] = (resumen[compra.categoria] || 0) + compra.montoTotal;
     return resumen;
   }, {});
+  
+  const handleCopyToClipboard = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(userId).then(() => {
+        alert('ID de usuario copiado al portapapeles');
+      }).catch(err => {
+        console.error('Error al copiar el ID:', err);
+        // Fallback for older browsers
+        const tempTextArea = document.createElement('textarea');
+        tempTextArea.value = userId;
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempTextArea);
+      });
+    } else {
+      const tempTextArea = document.createElement('textarea');
+      tempTextArea.value = userId;
+      document.body.appendChild(tempTextArea);
+      tempTextArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(tempTextArea);
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white font-sans">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-teal-500"></div>
+        <p className="mt-4 text-gray-400">Cargando tus datos...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12 lg:p-24 bg-gray-900 text-white font-sans">
       <h1 className="text-3xl sm:text-4xl font-bold mb-4 sm:mb-8 text-center text-teal-400 drop-shadow-lg">
         Control de Gastos 💳
       </h1>
+
+      <div className="bg-gray-800 p-4 rounded-xl shadow-md w-full max-w-sm sm:max-w-md mb-8 flex flex-col items-center border-t-4 border-teal-500">
+        <p className="text-sm text-gray-400">Tu ID de Usuario:</p>
+        <div className="flex items-center space-x-2 mt-1">
+          <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{userId}</span>
+          <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0a2 2 0 012 2v2M8 5a2 2 0 012 2M16 11H4v6a2 2 0 002 2h10a2 2 0 002-2v-6z" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
@@ -149,9 +257,13 @@ export default function Home() {
           onChange={(e) => setTarjetaSeleccionada(e.target.value)}
           className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300 ease-in-out"
         >
-          {tarjetas.map(t => (
-            <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
-          ))}
+          {tarjetas.length > 0 ? (
+            tarjetas.map(t => (
+              <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
+            ))
+          ) : (
+            <option value="">No hay tarjetas</option>
+          )}
         </select>
       </div>
 
