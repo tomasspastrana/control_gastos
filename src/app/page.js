@@ -67,7 +67,6 @@ function AuthWrapper() {
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setAuthUserId(user.uid);
-                // ***** CAMBIO IMPORTANTE #1 *****
                 // Al iniciar, revisamos si hay un ID guardado en la memoria del navegador.
                 const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (savedId) {
@@ -132,7 +131,6 @@ function AuthWrapper() {
     }
   };
   
-  // ***** CAMBIO IMPORTANTE #2 *****
   // Ahora, al cargar un ID, también lo guardamos en la memoria.
   const handleCargarId = () => {
     const idToLoad = idParaCargar.trim();
@@ -142,7 +140,6 @@ function AuthWrapper() {
     }
   };
 
-  // ***** NUEVA FUNCIÓN *****
   // Permite volver a nuestro ID original.
   const handleResetToMyId = () => {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
@@ -210,10 +207,15 @@ function AuthWrapper() {
     const compraAEliminar = tarjetaActiva?.compras[compraIndex];
     if (!compraAEliminar) return;
 
+    // ***** CORRECCIÓN DEL BUG *****
+    // Calculamos cuánto crédito debe devolverse. Es el valor de las cuotas que AÚN NO se han pagado.
+    const montoADevolver = compraAEliminar.montoCuota * compraAEliminar.cuotasRestantes;
+
     const tarjetasActualizadas = tarjetas.map(t =>
       t.nombre === tarjetaSeleccionada
         ? { ...t,
-            saldo: t.saldo + compraAEliminar.montoTotal,
+            // Sumamos solo el monto pendiente para no superar el límite original.
+            saldo: t.saldo + montoADevolver,
             compras: t.compras.filter((_, i) => i !== compraIndex)
           }
         : t
@@ -284,7 +286,6 @@ function AuthWrapper() {
                     className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
                   <button onClick={handleCargarId} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
-                  {/* ***** CAMBIO IMPORTANTE #3 ***** */}
                   {/* Mostramos el botón de volver solo si no estamos viendo nuestro propio ID */}
                   {authUserId !== activeUserId && (
                     <button onClick={handleResetToMyId} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition font-semibold">Volver a mi ID</button>
