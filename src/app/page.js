@@ -307,7 +307,7 @@ function AuthWrapper() {
           <select
             value={nuevaCompra.categoria}
             onChange={(e) => setNuevaCompra({...nuevaCompra, categoria: e.target.value})}
-            className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300 ease-in-out"
+            className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300 ease-in-out"
           >
             {categoriasDisponibles.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
