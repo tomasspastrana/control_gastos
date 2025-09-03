@@ -6,11 +6,19 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
-// Lee la configuración desde las Variables de Entorno de Vercel.
-// Esta es la forma correcta y segura para Next.js
-const firebaseConfigString = process.env.NEXT_PUBLIC_FIREBASE_CONFIG;
-const firebaseConfig = firebaseConfigString ? JSON.parse(firebaseConfigString) : {};
-const appId = 'control-de-gastos-app'; // Un ID simple para la ruta de la base de datos
+// ¡CORREGIDO! Construimos el objeto de configuración a partir de variables de entorno individuales.
+// Este método es mucho más seguro y robusto para Vercel.
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+};
+
+const appIdPath = 'control-de-gastos-app'; // Un ID simple para la ruta de la base de datos
 
 // El token inicial probablemente no existirá en Vercel, el código ya maneja esto.
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
@@ -38,8 +46,9 @@ function AuthWrapper() {
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
-    if (!firebaseConfig.projectId) {
-      console.error("Configuración de Firebase no encontrada. Revisa las variables de entorno en Vercel.");
+    // Verificamos que la configuración esencial exista antes de inicializar
+    if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+      console.error("Configuración de Firebase incompleta. Revisa las variables de entorno en Vercel.");
       setLoading(false);
       return;
     }
@@ -73,14 +82,14 @@ function AuthWrapper() {
         console.error("Error inicializando Firebase:", error);
         setLoading(false);
     }
-  }, []);
+  }, []); // El array vacío asegura que este efecto se ejecute solo una vez
 
   // Efecto para cargar los datos del usuario activo
   useEffect(() => {
     if (!db || !activeUserId) return;
 
     setLoading(true);
-    const userDocRef = doc(db, `artifacts/${appId}/users/${activeUserId}/data/tarjetas`);
+    const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
 
     const unsubscribeSnapshot = onSnapshot(userDocRef, async (snapshot) => {
       if (snapshot.exists()) {
@@ -90,7 +99,7 @@ function AuthWrapper() {
             setTarjetaSeleccionada(prev => data.tarjetas.some(t => t.nombre === prev) ? prev : data.tarjetas[0].nombre);
         }
       } else {
-        if (activeUserId === authUserId) {
+        if (activeUserId === authUserId) { // Solo crea datos si estamos viendo nuestro propio ID nuevo
           await setDoc(userDocRef, { tarjetas: datosIniciales });
           setTarjetas(datosIniciales);
           setTarjetaSeleccionada(datosIniciales[0]?.nombre || null);
@@ -111,11 +120,14 @@ function AuthWrapper() {
 
 
   const saveToFirebase = async (updatedTarjetas) => {
-    if (activeUserId && db) {
-      const userDocRef = doc(db, `artifacts/${appId}/users/${activeUserId}/data/tarjetas`);
+    // Solo permitimos guardar si estamos viendo nuestros propios datos
+    if (activeUserId === authUserId && db) {
+      const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
       try {
         await setDoc(userDocRef, { tarjetas: updatedTarjetas });
       } catch (e) { console.error("Error al guardar en Firebase: ", e); }
+    } else {
+        console.warn("No se puede guardar. No estás viendo tus propios datos.");
     }
   };
   
@@ -215,21 +227,17 @@ function AuthWrapper() {
   
   const handleCopyToClipboard = () => {
     if (!authUserId) return;
-    const tempInput = document.createElement('input');
-    tempInput.value = authUserId;
-    document.body.appendChild(tempInput);
-    tempInput.select();
-    document.execCommand('copy');
-    document.body.removeChild(tempInput);
-    setCopySuccess('¡ID Copiado!');
-    setTimeout(() => setCopySuccess(''), 2000); // El mensaje desaparece después de 2 segundos
+    navigator.clipboard.writeText(authUserId).then(() => {
+        setCopySuccess('¡ID Copiado!');
+        setTimeout(() => setCopySuccess(''), 2000);
+    });
   };
 
   if (loading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white font-sans">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-teal-500"></div>
-        <p className="mt-4 text-gray-400">Cargando datos...</p>
+        <p className="mt-4 text-gray-400">Conectando...</p>
       </main>
     );
   }
@@ -246,8 +254,8 @@ function AuthWrapper() {
           <div className="flex items-center space-x-2 mt-1">
             <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0_0_24_24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8_16H6a2_2_0_01-2-2V6a2_2_0_012-2h8a2_2_0_012_2v2m-6_12h8a2_2_0_002-2v-8a2_2_0_00-2-2h-8a2_2_0_00-2_2v8a2_2_0_002_2z" />
                 </svg>
             </button>
           </div>
@@ -343,7 +351,8 @@ function AuthWrapper() {
                   </select>
                   <button 
                       type="submit" 
-                      className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md"
+                      disabled={activeUserId !== authUserId}
+                      className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed"
                   >
                       {compraEnEdicion !== null ? 'Guardar Cambios' : 'Añadir Compra'}
                   </button>
@@ -386,10 +395,10 @@ function AuthWrapper() {
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
                             {compra.cuotas > 1 && compra.cuotasRestantes > 0 && (
-                                <button onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar</button>
+                                <button disabled={activeUserId !== authUserId} onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar</button>
                             )}
-                            <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium">Editar</button>
-                            <button onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
+                            <button disabled={activeUserId !== authUserId} onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Editar</button>
+                            <button disabled={activeUserId !== authUserId} onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Eliminar</button>
                         </div>
                     </li>
                     ))}
@@ -406,3 +415,4 @@ function AuthWrapper() {
 export default function HomePage() {
   return <AuthWrapper />;
 }
+
