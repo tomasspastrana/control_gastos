@@ -42,7 +42,6 @@ function AuthWrapper() {
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
   const [postergada, setPostergada] = useState(false);
-  // ***** CAMBIO #1: Nuevo estado para las cuotas ya pagadas *****
   const [cuotasPagadas, setCuotasPagadas] = useState('');
 
   // Efecto para inicializar Firebase y autenticar al usuario
@@ -155,7 +154,6 @@ function AuthWrapper() {
     
     const montoNum = parseFloat(nuevaCompra.monto);
     const cuotasNum = Number.isInteger(parseInt(nuevaCompra.cuotas)) && nuevaCompra.cuotas > 0 ? parseInt(nuevaCompra.cuotas) : 1;
-    // ***** CAMBIO #2: Calculamos las cuotas restantes correctamente *****
     const cuotasPagadasNum = Number.isInteger(parseInt(cuotasPagadas)) ? parseInt(cuotasPagadas) : 0;
     const cuotasRestantesNum = Math.max(0, cuotasNum - cuotasPagadasNum);
 
@@ -177,7 +175,8 @@ function AuthWrapper() {
 
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          saldoActualizado += compraOriginal.montoTotal; // Devolvemos el monto total para un cálculo limpio
+          // Al editar, siempre devolvemos el monto total original para un recálculo limpio
+          saldoActualizado += compraOriginal.montoTotal; 
           
           comprasActualizadas = [...t.compras];
           comprasActualizadas[compraEnEdicion] = compraFinal;
@@ -185,7 +184,13 @@ function AuthWrapper() {
           comprasActualizadas = [...t.compras, compraFinal];
         }
 
-        saldoActualizado -= compraFinal.montoTotal; // Restamos el monto total de la nueva compra/editada
+        // ***** CORRECCIÓN FUNDAMENTAL *****
+        // Si es una compra histórica (ya se pagaron cuotas), NO la restamos del saldo actual.
+        // Si es una compra nueva o editada, SÍ la restamos.
+        if (cuotasPagadasNum === 0 || compraEnEdicion !== null) {
+            saldoActualizado -= compraFinal.montoTotal;
+        }
+        
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
       return t;
@@ -195,7 +200,7 @@ function AuthWrapper() {
     setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     setCompraEnEdicion(null);
     setPostergada(false);
-    setCuotasPagadas(''); // Reseteamos el nuevo campo
+    setCuotasPagadas(''); 
   };
     
   const eliminarCompra = (compraIndex) => {
@@ -226,7 +231,6 @@ function AuthWrapper() {
     });
     setCompraEnEdicion(compraIndex);
     setPostergada(compraAEditar.postergada || false);
-    // ***** CAMBIO #3: Calculamos y seteamos las cuotas ya pagadas para la edición *****
     const pagadas = compraAEditar.cuotas - compraAEditar.cuotasRestantes;
     setCuotasPagadas(pagadas > 0 ? pagadas : '');
   };
@@ -461,7 +465,7 @@ function AuthWrapper() {
                       onChange={(e) => setNuevaCompra({...nuevaCompra, cuotas: e.target.value === '' ? '' : parseInt(e.target.value, 10)})}
                       className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
-                  {/* ***** CAMBIO #4: El nuevo campo para cuotas pagadas ***** */}
+                  {/* ***** CAMBIO #4: El campo para cuotas ya pagadas ***** */}
                   <input 
                       type="number" 
                       placeholder="¿Cuántas cuotas ya pagaste? (ej: 2)"
