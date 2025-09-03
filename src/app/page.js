@@ -41,8 +41,6 @@ function AuthWrapper() {
   const [activeUserId, setActiveUserId] = useState(null); 
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
-
-  // ***** CAMBIO #1: Nuevo estado para el checkbox *****
   const [postergada, setPostergada] = useState(false);
 
   // Efecto para inicializar Firebase y autenticar al usuario
@@ -164,7 +162,6 @@ function AuthWrapper() {
       montoCuota: montoNum / cuotasNum,
       cuotasRestantes: cuotasNum,
       pagada: false,
-      // ***** CAMBIO #2: Guardamos el estado de postergación *****
       postergada: postergada, 
     };
 
@@ -182,6 +179,7 @@ function AuthWrapper() {
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
+        // ***** CORRECCIÓN #1: Al editar, el saldo se ajusta por el monto TOTAL, no el pendiente *****
         saldoActualizado -= compraFinal.montoTotal;
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
@@ -227,7 +225,9 @@ function AuthWrapper() {
   const handleRecalcularSaldo = () => {
     if (!tarjetaActiva) return;
 
+    // ***** CORRECCIÓN #2: El recálculo ahora se basa en las cuotas pendientes, no en el monto total *****
     const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
+      // Sumamos solo lo que REALMENTE queda por pagar de cada compra
       return total + (compra.montoCuota * compra.cuotasRestantes);
     }, 0);
 
@@ -258,7 +258,6 @@ function AuthWrapper() {
   const resumenMes = useMemo(() => {
     if (!tarjetaActiva) return 0;
     return tarjetaActiva.compras.reduce((total, compra) => {
-      // ***** CAMBIO #3: El resumen ignora las compras postergadas *****
       if (compra.cuotasRestantes > 0 && !compra.postergada) {
         return total + compra.montoCuota;
       }
@@ -272,14 +271,12 @@ function AuthWrapper() {
     const comprasDespuesDelPago = tarjetaActiva.compras.map(compra => {
         let updatedCompra = { ...compra };
         
-        // Si la compra formó parte del resumen, le restamos una cuota.
         if (updatedCompra.cuotasRestantes > 0 && !updatedCompra.postergada) {
             const nuevasCuotasRestantes = updatedCompra.cuotasRestantes - 1;
             updatedCompra.cuotasRestantes = nuevasCuotasRestantes;
             updatedCompra.pagada = nuevasCuotasRestantes === 0;
         }
 
-        // ***** CAMBIO #4: Activamos las compras postergadas para el próximo mes *****
         if (updatedCompra.postergada) {
             updatedCompra.postergada = false;
         }
@@ -466,7 +463,6 @@ function AuthWrapper() {
                       <option key={cat} value={cat}>{cat}</option>
                       ))}
                   </select>
-                  {/* ***** CAMBIO #5: El nuevo checkbox para postergar ***** */}
                   <div className="flex items-center gap-2 text-gray-300">
                     <input 
                         type="checkbox"
