@@ -42,6 +42,8 @@ function AuthWrapper() {
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
   const [postergada, setPostergada] = useState(false);
+  // ***** CAMBIO #1: Nuevo estado para las cuotas ya pagadas *****
+  const [cuotasPagadas, setCuotasPagadas] = useState('');
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
@@ -153,15 +155,18 @@ function AuthWrapper() {
     
     const montoNum = parseFloat(nuevaCompra.monto);
     const cuotasNum = Number.isInteger(parseInt(nuevaCompra.cuotas)) && nuevaCompra.cuotas > 0 ? parseInt(nuevaCompra.cuotas) : 1;
-    
+    // ***** CAMBIO #2: Calculamos las cuotas restantes correctamente *****
+    const cuotasPagadasNum = Number.isInteger(parseInt(cuotasPagadas)) ? parseInt(cuotasPagadas) : 0;
+    const cuotasRestantesNum = Math.max(0, cuotasNum - cuotasPagadasNum);
+
     const compraFinal = {
       descripcion: nuevaCompra.descripcion,
       categoria: nuevaCompra.categoria,
       montoTotal: montoNum,
       cuotas: cuotasNum,
-      montoCuota: montoNum / cuotasNum,
-      cuotasRestantes: cuotasNum,
-      pagada: false,
+      montoCuota: cuotasNum > 0 ? montoNum / cuotasNum : montoNum,
+      cuotasRestantes: cuotasRestantesNum,
+      pagada: cuotasRestantesNum === 0,
       postergada: postergada, 
     };
 
@@ -169,18 +174,18 @@ function AuthWrapper() {
       if (t.nombre === tarjetaSeleccionada) {
         let saldoActualizado = t.saldo;
         let comprasActualizadas;
+
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          const montoPendienteOriginal = compraOriginal.montoCuota * compraOriginal.cuotasRestantes;
-          saldoActualizado += montoPendienteOriginal;
+          saldoActualizado += compraOriginal.montoTotal; // Devolvemos el monto total para un cálculo limpio
           
           comprasActualizadas = [...t.compras];
           comprasActualizadas[compraEnEdicion] = compraFinal;
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
-        // ***** CORRECCIÓN #1: Al editar, el saldo se ajusta por el monto TOTAL, no el pendiente *****
-        saldoActualizado -= compraFinal.montoTotal;
+
+        saldoActualizado -= compraFinal.montoTotal; // Restamos el monto total de la nueva compra/editada
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
       return t;
@@ -189,7 +194,8 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
     setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     setCompraEnEdicion(null);
-    setPostergada(false); // Reseteamos el checkbox
+    setPostergada(false);
+    setCuotasPagadas(''); // Reseteamos el nuevo campo
   };
     
   const eliminarCompra = (compraIndex) => {
@@ -220,14 +226,15 @@ function AuthWrapper() {
     });
     setCompraEnEdicion(compraIndex);
     setPostergada(compraAEditar.postergada || false);
+    // ***** CAMBIO #3: Calculamos y seteamos las cuotas ya pagadas para la edición *****
+    const pagadas = compraAEditar.cuotas - compraAEditar.cuotasRestantes;
+    setCuotasPagadas(pagadas > 0 ? pagadas : '');
   };
 
   const handleRecalcularSaldo = () => {
     if (!tarjetaActiva) return;
 
-    // ***** CORRECCIÓN #2: El recálculo ahora se basa en las cuotas pendientes, no en el monto total *****
     const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
-      // Sumamos solo lo que REALMENTE queda por pagar de cada compra
       return total + (compra.montoCuota * compra.cuotasRestantes);
     }, 0);
 
@@ -449,9 +456,17 @@ function AuthWrapper() {
                   />
                   <input 
                       type="number" 
-                      placeholder="Número de cuotas (1 por defecto)"
+                      placeholder="Número de cuotas (ej: 6)"
                       value={nuevaCompra.cuotas}
                       onChange={(e) => setNuevaCompra({...nuevaCompra, cuotas: e.target.value === '' ? '' : parseInt(e.target.value, 10)})}
+                      className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                  />
+                  {/* ***** CAMBIO #4: El nuevo campo para cuotas pagadas ***** */}
+                  <input 
+                      type="number" 
+                      placeholder="¿Cuántas cuotas ya pagaste? (ej: 2)"
+                      value={cuotasPagadas}
+                      onChange={(e) => setCuotasPagadas(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                       className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
                   <select
