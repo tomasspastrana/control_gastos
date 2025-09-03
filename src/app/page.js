@@ -168,12 +168,16 @@ function AuthWrapper() {
         let comprasActualizadas;
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          saldoActualizado += compraOriginal.montoTotal;
+          // Primero, restauramos el saldo pendiente de la compra original para no inflar el límite.
+          const montoPendienteOriginal = compraOriginal.montoCuota * compraOriginal.cuotasRestantes;
+          saldoActualizado += montoPendienteOriginal;
+          
           comprasActualizadas = [...t.compras];
           comprasActualizadas[compraEnEdicion] = compraFinal;
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
+        // Restamos el monto total de la nueva compra (o la compra editada).
         saldoActualizado -= compraFinal.montoTotal;
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
@@ -229,16 +233,13 @@ function AuthWrapper() {
     setCompraEnEdicion(compraIndex);
   };
 
-  // ***** NUEVA FUNCIÓN PARA RECALCULAR EL SALDO *****
   const handleRecalcularSaldo = () => {
     if (!tarjetaActiva) return;
 
-    // Calcula el total de crédito actualmente utilizado por las cuotas pendientes.
     const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
       return total + (compra.montoCuota * compra.cuotasRestantes);
     }, 0);
 
-    // El saldo correcto es el límite original menos la deuda pendiente.
     const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
 
     const tarjetasActualizadas = tarjetas.map(t =>
@@ -285,7 +286,7 @@ function AuthWrapper() {
             <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 S0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </button>
           </div>
@@ -337,7 +338,6 @@ function AuthWrapper() {
       {tarjetaActiva && (
         <>
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
-                {/* ***** NUEVO BOTÓN DE RECALCULAR ***** */}
                 <div className="flex justify-between items-center mb-2">
                     <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
                         Saldo disponible de {tarjetaActiva.nombre}
@@ -435,7 +435,8 @@ function AuthWrapper() {
                         )}
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                            {compra.cuotas > 1 && compra.cuotasRestantes > 0 && (
+                            {/* ESTA ES LA LÍNEA CORREGIDA */}
+                            {compra.cuotasRestantes > 0 && (
                                 <button onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar</button>
                             )}
                             <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium">Editar</button>
