@@ -41,11 +41,7 @@ function AuthWrapper() {
   const [activeUserId, setActiveUserId] = useState(null); 
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
-<<<<<<< HEAD
   const [postergada, setPostergada] = useState(false);
-  const [cuotasPagadas, setCuotasPagadas] = useState('');
-=======
->>>>>>> parent of de43924 (finalV12 one for all %100)
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
@@ -157,49 +153,34 @@ function AuthWrapper() {
     
     const montoNum = parseFloat(nuevaCompra.monto);
     const cuotasNum = Number.isInteger(parseInt(nuevaCompra.cuotas)) && nuevaCompra.cuotas > 0 ? parseInt(nuevaCompra.cuotas) : 1;
-    const cuotasPagadasNum = Number.isInteger(parseInt(cuotasPagadas)) ? parseInt(cuotasPagadas) : 0;
-    const cuotasRestantesNum = Math.max(0, cuotasNum - cuotasPagadasNum);
-
+    
     const compraFinal = {
       descripcion: nuevaCompra.descripcion,
       categoria: nuevaCompra.categoria,
       montoTotal: montoNum,
       cuotas: cuotasNum,
-<<<<<<< HEAD
-      montoCuota: cuotasNum > 0 ? montoNum / cuotasNum : montoNum,
-      cuotasRestantes: cuotasRestantesNum,
-      pagada: cuotasRestantesNum === 0,
-      postergada: postergada, 
-=======
       montoCuota: montoNum / cuotasNum,
       cuotasRestantes: cuotasNum,
-      pagada: false, // Las compras nuevas nunca están pagadas.
->>>>>>> parent of de43924 (finalV12 one for all %100)
+      pagada: false,
+      postergada: postergada, 
     };
 
     const tarjetasActualizadas = tarjetas.map(t => {
       if (t.nombre === tarjetaSeleccionada) {
         let saldoActualizado = t.saldo;
         let comprasActualizadas;
-
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          // Al editar, siempre devolvemos el monto total original para un recálculo limpio
-          saldoActualizado += compraOriginal.montoTotal; 
+          const montoPendienteOriginal = compraOriginal.montoCuota * compraOriginal.cuotasRestantes;
+          saldoActualizado += montoPendienteOriginal;
           
           comprasActualizadas = [...t.compras];
           comprasActualizadas[compraEnEdicion] = compraFinal;
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
-
-        // ***** CORRECCIÓN FUNDAMENTAL *****
-        // Si es una compra histórica (ya se pagaron cuotas), NO la restamos del saldo actual.
-        // Si es una compra nueva o editada, SÍ la restamos.
-        if (cuotasPagadasNum === 0 || compraEnEdicion !== null) {
-            saldoActualizado -= compraFinal.montoTotal;
-        }
-        
+        // ***** CORRECCIÓN #1: Al editar, el saldo se ajusta por el monto TOTAL, no el pendiente *****
+        saldoActualizado -= compraFinal.montoTotal;
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
       return t;
@@ -208,11 +189,7 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
     setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     setCompraEnEdicion(null);
-<<<<<<< HEAD
-    setPostergada(false);
-    setCuotasPagadas(''); 
-=======
->>>>>>> parent of de43924 (finalV12 one for all %100)
+    setPostergada(false); // Reseteamos el checkbox
   };
     
   const eliminarCompra = (compraIndex) => {
@@ -242,18 +219,15 @@ function AuthWrapper() {
       categoria: compraAEditar.categoria
     });
     setCompraEnEdicion(compraIndex);
-<<<<<<< HEAD
     setPostergada(compraAEditar.postergada || false);
-    const pagadas = compraAEditar.cuotas - compraAEditar.cuotasRestantes;
-    setCuotasPagadas(pagadas > 0 ? pagadas : '');
-=======
->>>>>>> parent of de43924 (finalV12 one for all %100)
   };
 
   const handleRecalcularSaldo = () => {
     if (!tarjetaActiva) return;
 
+    // ***** CORRECCIÓN #2: El recálculo ahora se basa en las cuotas pendientes, no en el monto total *****
     const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
+      // Sumamos solo lo que REALMENTE queda por pagar de cada compra
       return total + (compra.montoCuota * compra.cuotasRestantes);
     }, 0);
 
@@ -284,11 +258,7 @@ function AuthWrapper() {
   const resumenMes = useMemo(() => {
     if (!tarjetaActiva) return 0;
     return tarjetaActiva.compras.reduce((total, compra) => {
-<<<<<<< HEAD
       if (compra.cuotasRestantes > 0 && !compra.postergada) {
-=======
-      if (compra.cuotasRestantes > 0) {
->>>>>>> parent of de43924 (finalV12 one for all %100)
         return total + compra.montoCuota;
       }
       return total;
@@ -299,7 +269,6 @@ function AuthWrapper() {
     if (!tarjetaActiva || resumenMes <= 0) return;
 
     const comprasDespuesDelPago = tarjetaActiva.compras.map(compra => {
-<<<<<<< HEAD
         let updatedCompra = { ...compra };
         
         if (updatedCompra.cuotasRestantes > 0 && !updatedCompra.postergada) {
@@ -313,17 +282,6 @@ function AuthWrapper() {
         }
 
         return updatedCompra;
-=======
-        if (compra.cuotasRestantes > 0) {
-            const nuevasCuotasRestantes = compra.cuotasRestantes - 1;
-            return {
-                ...compra,
-                cuotasRestantes: nuevasCuotasRestantes,
-                pagada: nuevasCuotasRestantes === 0
-            };
-        }
-        return compra;
->>>>>>> parent of de43924 (finalV12 one for all %100)
     });
 
     const tarjetasActualizadas = tarjetas.map(t => {
@@ -337,8 +295,6 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
   };
 
-  // ***** NUEVA FUNCIÓN (RESTAURADA) *****
-  // Permite pagar una cuota individual de cualquier compra.
   const handlePagarCuota = (compraIndex) => {
     const compra = tarjetaActiva?.compras[compraIndex];
     if (!compra || compra.cuotasRestantes <= 0) return;
@@ -493,17 +449,9 @@ function AuthWrapper() {
                   />
                   <input 
                       type="number" 
-                      placeholder="Número de cuotas (ej: 6)"
+                      placeholder="Número de cuotas (1 por defecto)"
                       value={nuevaCompra.cuotas}
                       onChange={(e) => setNuevaCompra({...nuevaCompra, cuotas: e.target.value === '' ? '' : parseInt(e.target.value, 10)})}
-                      className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-                  />
-                  {/* ***** CAMBIO #4: El campo para cuotas ya pagadas ***** */}
-                  <input 
-                      type="number" 
-                      placeholder="¿Cuántas cuotas ya pagaste? (ej: 2)"
-                      value={cuotasPagadas}
-                      onChange={(e) => setCuotasPagadas(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                       className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
                   <select
@@ -515,7 +463,6 @@ function AuthWrapper() {
                       <option key={cat} value={cat}>{cat}</option>
                       ))}
                   </select>
-<<<<<<< HEAD
                   <div className="flex items-center gap-2 text-gray-300">
                     <input 
                         type="checkbox"
@@ -526,8 +473,6 @@ function AuthWrapper() {
                     />
                     <label htmlFor="postergada-checkbox">Pagar en el próximo resumen</label>
                   </div>
-=======
->>>>>>> parent of de43924 (finalV12 one for all %100)
                   <button 
                       type="submit" 
                       className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md"
@@ -560,9 +505,10 @@ function AuthWrapper() {
                     {tarjetaActiva.compras.map((compra, index) => (
                     <li key={index} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3">
                         <div className={compra.pagada ? 'opacity-50' : ''}>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-bold text-lg">{compra.descripcion}</p>
                                 {compra.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
+                                {compra.postergada && <span className="text-xs font-bold text-black bg-yellow-400 px-2 py-1 rounded-full">POSTERGADA</span>}
                             </div>
                             <p className="text-sm text-gray-400">{compra.categoria}</p>
                             <p className="text-base text-gray-200">
@@ -573,8 +519,6 @@ function AuthWrapper() {
                             </p>
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                            {/* ***** CAMBIO VISUAL ***** */}
-                            {/* El botón de Pagar Cuota individual ha vuelto */}
                             {compra.cuotasRestantes > 0 && (
                                 <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
                             )}
