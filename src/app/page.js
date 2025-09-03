@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { getFirestore, collection, doc, onSnapshot, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 // Define the Firebase config variables
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
@@ -19,75 +19,88 @@ const datosIniciales = [
 
 const categoriasDisponibles = ['Alimentos', 'Transporte', 'Entretenimiento', 'Servicios', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
-export default function Home() {
+function AuthWrapper() {
   const [tarjetas, setTarjetas] = useState([]);
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [nuevaCompra, setNuevaCompra] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
   const [compraEnEdicion, setCompraEnEdicion] = useState(null); 
   const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
+
   // Firebase initialization and authentication
   useEffect(() => {
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    
-    // Sign in the user
-    const signIn = async () => {
-      try {
-        if (initialAuthToken) {
-          await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Firebase Auth Error:", error);
-      }
-    };
-    
-    signIn();
-
-    // Listen for auth state changes
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/tarjetas`);
-
-        // Check if user has existing data
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (!userDocSnap.exists()) {
-          // If no data exists, save the initial data
-          await setDoc(userDocRef, {
-            tarjetas: datosIniciales
-          });
-          setTarjetas(datosIniciales);
-          setTarjetaSeleccionada(datosIniciales[0].nombre);
-        } else {
-          // Listen to real-time changes
-          const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
-            const data = snapshot.data();
-            if (data && data.tarjetas) {
-              setTarjetas(data.tarjetas);
-              setTarjetaSeleccionada(data.tarjetas[0]?.nombre || null);
-            } else {
-              setTarjetas(datosIniciales);
-              setTarjetaSeleccionada(datosIniciales[0].nombre);
-            }
-            setLoading(false);
-          });
-          // Cleanup listener on unmount
-          return () => unsubscribe();
-        }
-      }
+    // Check if the Firebase config has a projectId before initializing
+    if (firebaseConfig.projectId) {
+      const app = initializeApp(firebaseConfig);
+      const firestore = getFirestore(app);
+      const authenticator = getAuth(app);
+      setDb(firestore);
+      setAuth(authenticator);
+    } else {
+      console.error("Firebase config is missing. App will not function with a database.");
       setLoading(false);
-    });
+    }
   }, []);
 
+  useEffect(() => {
+    if (db && auth) {
+      // Sign in the user
+      const signIn = async () => {
+        try {
+          if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+          } else {
+            await signInAnonymously(auth);
+          }
+        } catch (error) {
+          console.error("Firebase Auth Error:", error);
+        }
+      };
+      
+      signIn();
+  
+      // Listen for auth state changes
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          setUserId(user.uid);
+          const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/tarjetas`);
+  
+          // Check if user has existing data
+          const userDocSnap = await getDoc(userDocRef);
+  
+          if (!userDocSnap.exists()) {
+            // If no data exists, save the initial data
+            await setDoc(userDocRef, {
+              tarjetas: datosIniciales
+            });
+            setTarjetas(datosIniciales);
+            setTarjetaSeleccionada(datosIniciales[0].nombre);
+          } else {
+            // Listen to real-time changes
+            const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+              const data = snapshot.data();
+              if (data && data.tarjetas) {
+                setTarjetas(data.tarjetas);
+                setTarjetaSeleccionada(data.tarjetas[0]?.nombre || null);
+              } else {
+                setTarjetas(datosIniciales);
+                setTarjetaSeleccionada(datosIniciales[0].nombre);
+              }
+              setLoading(false);
+            });
+            // Cleanup listener on unmount
+            return () => unsubscribe();
+          }
+        }
+        setLoading(false);
+      });
+    }
+  }, [db, auth]);
+
   const saveToFirebase = async (updatedTarjetas) => {
-    if (userId) {
-      const db = getFirestore(initializeApp(firebaseConfig));
+    if (userId && db) {
       const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/data/tarjetas`);
       try {
         await setDoc(userDocRef, { tarjetas: updatedTarjetas });
@@ -198,27 +211,13 @@ export default function Home() {
   }, {});
   
   const handleCopyToClipboard = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(userId).then(() => {
-        alert('ID de usuario copiado al portapapeles');
-      }).catch(err => {
-        console.error('Error al copiar el ID:', err);
-        // Fallback for older browsers
-        const tempTextArea = document.createElement('textarea');
-        tempTextArea.value = userId;
-        document.body.appendChild(tempTextArea);
-        tempTextArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempTextArea);
-      });
-    } else {
-      const tempTextArea = document.createElement('textarea');
-      tempTextArea.value = userId;
-      document.body.appendChild(tempTextArea);
-      tempTextArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(tempTextArea);
-    }
+    // Fallback for older browsers
+    const tempTextArea = document.createElement('textarea');
+    tempTextArea.value = userId;
+    document.body.appendChild(tempTextArea);
+    tempTextArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempTextArea);
   };
 
   if (loading) {
@@ -390,4 +389,8 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+export default function HomePage() {
+  return <AuthWrapper />;
 }
