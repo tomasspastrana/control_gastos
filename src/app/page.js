@@ -42,6 +42,7 @@ function AuthWrapper() {
   const [idParaCargar, setIdParaCargar] = useState(''); 
   const [copySuccess, setCopySuccess] = useState(''); 
   const [postergada, setPostergada] = useState(false);
+  const [cuotasPagadas, setCuotasPagadas] = useState('');
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
@@ -153,15 +154,17 @@ function AuthWrapper() {
     
     const montoNum = parseFloat(nuevaCompra.monto);
     const cuotasNum = Number.isInteger(parseInt(nuevaCompra.cuotas)) && nuevaCompra.cuotas > 0 ? parseInt(nuevaCompra.cuotas) : 1;
-    
+    const cuotasPagadasNum = Number.isInteger(parseInt(cuotasPagadas)) ? parseInt(cuotasPagadas) : 0;
+    const cuotasRestantesNum = Math.max(0, cuotasNum - cuotasPagadasNum);
+
     const compraFinal = {
       descripcion: nuevaCompra.descripcion,
       categoria: nuevaCompra.categoria,
       montoTotal: montoNum,
       cuotas: cuotasNum,
-      montoCuota: montoNum / cuotasNum,
-      cuotasRestantes: cuotasNum,
-      pagada: false,
+      montoCuota: cuotasNum > 0 ? montoNum / cuotasNum : montoNum,
+      cuotasRestantes: cuotasRestantesNum,
+      pagada: cuotasRestantesNum === 0,
       postergada: postergada, 
     };
 
@@ -169,18 +172,21 @@ function AuthWrapper() {
       if (t.nombre === tarjetaSeleccionada) {
         let saldoActualizado = t.saldo;
         let comprasActualizadas;
+
         if (compraEnEdicion !== null) {
           const compraOriginal = t.compras[compraEnEdicion];
-          const montoPendienteOriginal = compraOriginal.montoCuota * compraOriginal.cuotasRestantes;
-          saldoActualizado += montoPendienteOriginal;
+          saldoActualizado += compraOriginal.montoTotal; 
           
           comprasActualizadas = [...t.compras];
           comprasActualizadas[compraEnEdicion] = compraFinal;
         } else {
           comprasActualizadas = [...t.compras, compraFinal];
         }
-        // ***** CORRECCIÓN #1: Al editar, el saldo se ajusta por el monto TOTAL, no el pendiente *****
-        saldoActualizado -= compraFinal.montoTotal;
+
+        if (cuotasPagadasNum === 0 || compraEnEdicion !== null) {
+            saldoActualizado -= compraFinal.montoTotal;
+        }
+        
         return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
       }
       return t;
@@ -189,7 +195,8 @@ function AuthWrapper() {
     saveToFirebase(tarjetasActualizadas);
     setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     setCompraEnEdicion(null);
-    setPostergada(false); // Reseteamos el checkbox
+    setPostergada(false);
+    setCuotasPagadas(''); 
   };
     
   const eliminarCompra = (compraIndex) => {
@@ -220,14 +227,14 @@ function AuthWrapper() {
     });
     setCompraEnEdicion(compraIndex);
     setPostergada(compraAEditar.postergada || false);
+    const pagadas = compraAEditar.cuotas - compraAEditar.cuotasRestantes;
+    setCuotasPagadas(pagadas > 0 ? pagadas : '');
   };
 
   const handleRecalcularSaldo = () => {
     if (!tarjetaActiva) return;
 
-    // ***** CORRECCIÓN #2: El recálculo ahora se basa en las cuotas pendientes, no en el monto total *****
     const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
-      // Sumamos solo lo que REALMENTE queda por pagar de cada compra
       return total + (compra.montoCuota * compra.cuotasRestantes);
     }, 0);
 
@@ -393,22 +400,27 @@ function AuthWrapper() {
 
       {tarjetaActiva && (
         <>
-            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
-                        Saldo disponible de {tarjetaActiva.nombre}
-                    </h2>
-                    <button onClick={handleRecalcularSaldo} title="Recalcular saldo si es incorrecto" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">
-                        Recalcular
-                    </button>
-                </div>
-                <p className="text-3xl sm:text-4xl font-extrabold text-green-400">
-                    $ {tarjetaActiva.saldo.toLocaleString('es-AR')}
-                </p>
-                <p className="text-sm sm:text-lg text-gray-400 mt-1">
-                    Límite original: $ {tarjetaActiva.limite.toLocaleString('es-AR')}
-                </p>
-            </div>
+            {/* ***** CAMBIO VISUAL: Este bloque ahora es condicional ***** */}
+            {/* Solo se muestra si el nombre de la tarjeta NO incluye "BBVA" */}
+            {!tarjetaActiva.nombre.includes('BBVA') && (
+              <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
+                  <div className="flex justify-between items-center mb-2">
+                      <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
+                          Saldo disponible de {tarjetaActiva.nombre}
+                      </h2>
+                      <button onClick={handleRecalcularSaldo} title="Recalcular saldo si es incorrecto" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">
+                          Recalcular
+                      </button>
+                  </div>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-green-400">
+                      $ {tarjetaActiva.saldo.toLocaleString('es-AR')}
+                  </p>
+                  <p className="text-sm sm:text-lg text-gray-400 mt-1">
+                      Límite original: $ {tarjetaActiva.limite.toLocaleString('es-AR')}
+                  </p>
+              </div>
+            )}
+
 
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-blue-500">
                 <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
@@ -449,9 +461,16 @@ function AuthWrapper() {
                   />
                   <input 
                       type="number" 
-                      placeholder="Número de cuotas (1 por defecto)"
+                      placeholder="Número de cuotas (ej: 6)"
                       value={nuevaCompra.cuotas}
                       onChange={(e) => setNuevaCompra({...nuevaCompra, cuotas: e.target.value === '' ? '' : parseInt(e.target.value, 10)})}
+                      className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                  />
+                  <input 
+                      type="number" 
+                      placeholder="¿Cuántas cuotas ya pagaste? (ej: 2)"
+                      value={cuotasPagadas}
+                      onChange={(e) => setCuotasPagadas(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                       className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
                   <select
