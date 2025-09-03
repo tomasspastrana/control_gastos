@@ -74,6 +74,7 @@ function AuthWrapper() {
             // Si el usuario ya tiene datos, los cargamos
             const data = snapshot.data();
             setTarjetas(data.tarjetas || []);
+            // Se selecciona la primera tarjeta si no hay ninguna seleccionada
             if (!tarjetaSeleccionada && data.tarjetas?.length > 0) {
               setTarjetaSeleccionada(data.tarjetas[0].nombre);
             }
@@ -121,13 +122,18 @@ function AuthWrapper() {
   const guardarCompra = (e) => {
     e.preventDefault();
     if (nuevaCompra.monto > 0 && nuevaCompra.descripcion) {
-      const montoCuota = nuevaCompra.cuotas > 0 ? nuevaCompra.monto / nuevaCompra.cuotas : nuevaCompra.monto;
+      // Se limpian y validan los datos de la nueva compra.
+      const montoNum = parseFloat(nuevaCompra.monto);
+      const cuotasNum = Number.isInteger(nuevaCompra.cuotas) && nuevaCompra.cuotas > 0 ? nuevaCompra.cuotas : 1;
+      const montoCuota = montoNum / cuotasNum;
       
-      const compraConCuotas = {
-        ...nuevaCompra,
-        montoTotal: nuevaCompra.monto,
+      const compraFinal = {
+        descripcion: nuevaCompra.descripcion,
+        categoria: nuevaCompra.categoria,
+        montoTotal: montoNum,
+        cuotas: cuotasNum,
         montoCuota: montoCuota,
-        cuotasRestantes: nuevaCompra.cuotas > 0 ? nuevaCompra.cuotas : 1,
+        cuotasRestantes: cuotasNum,
       };
 
       const tarjetasActualizadas = tarjetas.map(t => {
@@ -136,21 +142,24 @@ function AuthWrapper() {
           let comprasActualizadas;
 
           if (compraEnEdicion !== null) {
+            // Lógica para editar una compra existente
             const compraOriginal = t.compras[compraEnEdicion];
             saldoActualizado += compraOriginal.montoTotal; // Devolvemos el saldo original
             comprasActualizadas = [...t.compras];
-            comprasActualizadas[compraEnEdicion] = compraConCuotas;
+            comprasActualizadas[compraEnEdicion] = compraFinal; // <-- CORREGIDO: Se usa la variable correcta
           } else {
-            comprasActualizadas = [...t.compras, compraConCuotas];
+             // Lógica para añadir una nueva compra
+            comprasActualizadas = [...t.compras, compraFinal]; // <-- CORREGIDO: Se usa la variable correcta
           }
 
-          saldoActualizado -= compraConCuotas.montoTotal; // Restamos el nuevo monto
+          saldoActualizado -= compraFinal.montoTotal; // <-- CORREGIDO: Se usa la variable correcta
 
           return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
         }
         return t;
       });
       
+      setTarjetas(tarjetasActualizadas);
       saveToFirebase(tarjetasActualizadas);
       setNuevaCompra({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
       setCompraEnEdicion(null);
@@ -174,6 +183,7 @@ function AuthWrapper() {
           : t
       );
       
+      setTarjetas(tarjetasActualizadas);
       saveToFirebase(tarjetasActualizadas);
     }
   };
@@ -191,6 +201,7 @@ function AuthWrapper() {
           }
         : t
     );
+    setTarjetas(tarjetasActualizadas);
     saveToFirebase(tarjetasActualizadas);
   };
 
@@ -218,7 +229,6 @@ function AuthWrapper() {
       tempTextArea.select();
       document.execCommand('copy');
       document.body.removeChild(tempTextArea);
-      // Opcional: mostrar una notificación de "Copiado!"
     }
   };
 
@@ -399,3 +409,4 @@ function AuthWrapper() {
 export default function HomePage() {
   return <AuthWrapper />;
 }
+
