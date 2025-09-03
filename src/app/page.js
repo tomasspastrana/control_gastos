@@ -6,8 +6,6 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
-// ¡CORREGIDO! Construimos el objeto de configuración a partir de variables de entorno individuales.
-// Este método es mucho más seguro y robusto para Vercel.
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -18,13 +16,11 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-const appIdPath = 'control-de-gastos-app'; // Un ID simple para la ruta de la base de datos
+const appIdPath = 'control-de-gastos-app'; 
 
-// El token inicial probablemente no existirá en Vercel, el código ya maneja esto.
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
 
 // --- Datos y Categorías Iniciales ---
-// CORREGIDO: Se restauraron los nombres originales de las tarjetas.
 const datosIniciales = [
   { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
   { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
@@ -40,15 +36,13 @@ function AuthWrapper() {
   const [loading, setLoading] = useState(true);
   const [db, setDb] = useState(null);
   
-  // --- Estados para manejar múltiples usuarios ---
-  const [authUserId, setAuthUserId] = useState(null); // El ID de este dispositivo
-  const [activeUserId, setActiveUserId] = useState(null); // El ID de los datos que estamos viendo
-  const [idParaCargar, setIdParaCargar] = useState(''); // El valor del input para cargar un ID
-  const [copySuccess, setCopySuccess] = useState(''); // Mensaje de éxito al copiar
+  const [authUserId, setAuthUserId] = useState(null); 
+  const [activeUserId, setActiveUserId] = useState(null); 
+  const [idParaCargar, setIdParaCargar] = useState(''); 
+  const [copySuccess, setCopySuccess] = useState(''); 
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
-    // Verificamos que la configuración esencial exista antes de inicializar
     if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
       console.error("Configuración de Firebase incompleta. Revisa las variables de entorno en Vercel.");
       setLoading(false);
@@ -72,7 +66,6 @@ function AuthWrapper() {
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setAuthUserId(user.uid);
-                // Solo establece el ID activo si aún no se ha cargado uno.
                 if (!activeUserId) setActiveUserId(user.uid);
             } else {
                 setAuthUserId(null);
@@ -85,11 +78,10 @@ function AuthWrapper() {
         console.error("Error inicializando Firebase:", error);
         setLoading(false);
     }
-  }, []); // El array vacío asegura que este efecto se ejecute solo una vez
+  }, []); 
 
   // Efecto para cargar los datos del usuario activo
   useEffect(() => {
-    // No hacer nada si no tenemos la base de datos lista o un ID que cargar.
     if (!db || !activeUserId) return;
 
     setLoading(true);
@@ -103,13 +95,11 @@ function AuthWrapper() {
             setTarjetaSeleccionada(prev => data.tarjetas.some(t => t.nombre === prev) ? prev : data.tarjetas[0].nombre);
         }
       } else {
-        // Si el documento no existe Y estamos viendo nuestro PROPIO ID, creamos los datos iniciales.
-        if (activeUserId === authUserId && authUserId !== null) {
+        if (activeUserId === authUserId && authUserId !== null) { 
           await setDoc(userDocRef, { tarjetas: datosIniciales });
           setTarjetas(datosIniciales);
           setTarjetaSeleccionada(datosIniciales[0]?.nombre || null);
         } else {
-          // Si cargamos un ID de otro que no existe, mostramos la lista vacía.
           setTarjetas([]);
           setTarjetaSeleccionada(null);
           console.warn("El ID cargado no tiene datos.");
@@ -122,18 +112,17 @@ function AuthWrapper() {
     });
 
     return () => unsubscribeSnapshot();
-  }, [db, activeUserId]); // CORREGIDO: Dependencia simplificada para mayor estabilidad.
+  }, [db, activeUserId]);
 
 
+  // ***** CAMBIO IMPORTANTE #1 *****
+  // Quitamos la comprobación de seguridad. Ahora cualquiera que tenga el ID puede guardar.
   const saveToFirebase = async (updatedTarjetas) => {
-    // Solo permitimos guardar si estamos viendo nuestros propios datos
-    if (activeUserId === authUserId && db) {
+    if (activeUserId && db) { // <-- Se eliminó la condición "activeUserId === authUserId"
       const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
       try {
         await setDoc(userDocRef, { tarjetas: updatedTarjetas });
       } catch (e) { console.error("Error al guardar en Firebase: ", e); }
-    } else {
-        console.warn("No se puede guardar. No estás viendo tus propios datos.");
     }
   };
   
@@ -355,10 +344,11 @@ function AuthWrapper() {
                       <option key={cat} value={cat}>{cat}</option>
                       ))}
                   </select>
+                  {/* ***** CAMBIO IMPORTANTE #2 ***** */}
+                  {/* Quitamos el 'disabled' para que todos puedan añadir compras */}
                   <button 
                       type="submit" 
-                      disabled={activeUserId !== authUserId}
-                      className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed"
+                      className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md"
                   >
                       {compraEnEdicion !== null ? 'Guardar Cambios' : 'Añadir Compra'}
                   </button>
@@ -400,11 +390,13 @@ function AuthWrapper() {
                         )}
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
+                            {/* ***** CAMBIO IMPORTANTE #3 ***** */}
+                            {/* Quitamos el 'disabled' de los botones de acción */}
                             {compra.cuotas > 1 && compra.cuotasRestantes > 0 && (
-                                <button disabled={activeUserId !== authUserId} onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar</button>
+                                <button onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar</button>
                             )}
-                            <button disabled={activeUserId !== authUserId} onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Editar</button>
-                            <button disabled={activeUserId !== authUserId} onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">Eliminar</button>
+                            <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium">Editar</button>
+                            <button onClick={() => eliminarCompra(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
                         </div>
                     </li>
                     ))}
@@ -417,7 +409,6 @@ function AuthWrapper() {
   );
 }
 
-// El default export es el componente de la página
 export default function HomePage() {
   return <AuthWrapper />;
 }
