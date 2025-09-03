@@ -67,12 +67,11 @@ function AuthWrapper() {
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setAuthUserId(user.uid);
-                // Al iniciar, revisamos si hay un ID guardado en la memoria del navegador.
                 const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (savedId) {
-                    setActiveUserId(savedId); // Si existe, lo usamos.
+                    setActiveUserId(savedId);
                 } else {
-                    setActiveUserId(user.uid); // Si no, usamos el nuestro.
+                    setActiveUserId(user.uid);
                 }
             } else {
                 setAuthUserId(null);
@@ -131,7 +130,6 @@ function AuthWrapper() {
     }
   };
   
-  // Ahora, al cargar un ID, también lo guardamos en la memoria.
   const handleCargarId = () => {
     const idToLoad = idParaCargar.trim();
     if (idToLoad && idToLoad !== activeUserId) {
@@ -140,7 +138,6 @@ function AuthWrapper() {
     }
   };
 
-  // Permite volver a nuestro ID original.
   const handleResetToMyId = () => {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     setActiveUserId(authUserId);
@@ -207,14 +204,11 @@ function AuthWrapper() {
     const compraAEliminar = tarjetaActiva?.compras[compraIndex];
     if (!compraAEliminar) return;
 
-    // ***** CORRECCIÓN DEL BUG *****
-    // Calculamos cuánto crédito debe devolverse. Es el valor de las cuotas que AÚN NO se han pagado.
     const montoADevolver = compraAEliminar.montoCuota * compraAEliminar.cuotasRestantes;
 
     const tarjetasActualizadas = tarjetas.map(t =>
       t.nombre === tarjetaSeleccionada
         ? { ...t,
-            // Sumamos solo el monto pendiente para no superar el límite original.
             saldo: t.saldo + montoADevolver,
             compras: t.compras.filter((_, i) => i !== compraIndex)
           }
@@ -233,6 +227,27 @@ function AuthWrapper() {
       categoria: compraAEditar.categoria
     });
     setCompraEnEdicion(compraIndex);
+  };
+
+  // ***** NUEVA FUNCIÓN PARA RECALCULAR EL SALDO *****
+  const handleRecalcularSaldo = () => {
+    if (!tarjetaActiva) return;
+
+    // Calcula el total de crédito actualmente utilizado por las cuotas pendientes.
+    const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
+      return total + (compra.montoCuota * compra.cuotasRestantes);
+    }, 0);
+
+    // El saldo correcto es el límite original menos la deuda pendiente.
+    const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
+
+    const tarjetasActualizadas = tarjetas.map(t =>
+      t.nombre === tarjetaSeleccionada
+        ? { ...t, saldo: saldoCorrecto }
+        : t
+    );
+    
+    saveToFirebase(tarjetasActualizadas);
   };
 
   const resumenGastos = tarjetaActiva?.compras.reduce((resumen, compra) => {
@@ -270,7 +285,7 @@ function AuthWrapper() {
             <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
             <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 S0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </button>
           </div>
@@ -286,12 +301,10 @@ function AuthWrapper() {
                     className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
                   <button onClick={handleCargarId} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
-                  {/* Mostramos el botón de volver solo si no estamos viendo nuestro propio ID */}
                   {authUserId !== activeUserId && (
                     <button onClick={handleResetToMyId} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition font-semibold">Volver a mi ID</button>
                   )}
               </div>
-              {/* Mostramos un aviso si estamos viendo datos ajenos */}
               {authUserId !== activeUserId && (
                 <p className="text-yellow-400 text-xs mt-2 text-center">
                     Estás viendo los datos de otro usuario.
@@ -300,8 +313,6 @@ function AuthWrapper() {
           </div>
         </div>
       )}
-
-      { /* El resto de la UI permanece igual */ }
       
       <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
@@ -326,9 +337,15 @@ function AuthWrapper() {
       {tarjetaActiva && (
         <>
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
-                <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                    Saldo disponible de {tarjetaActiva.nombre}
-                </h2>
+                {/* ***** NUEVO BOTÓN DE RECALCULAR ***** */}
+                <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
+                        Saldo disponible de {tarjetaActiva.nombre}
+                    </h2>
+                    <button onClick={handleRecalcularSaldo} title="Recalcular saldo si es incorrecto" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">
+                        Recalcular
+                    </button>
+                </div>
                 <p className="text-3xl sm:text-4xl font-extrabold text-green-400">
                     $ {tarjetaActiva.saldo.toLocaleString('es-AR')}
                 </p>
