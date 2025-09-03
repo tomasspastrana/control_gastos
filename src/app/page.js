@@ -19,6 +19,7 @@ const firebaseConfig = {
 const appIdPath = 'control-de-gastos-app'; 
 
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
+const LOCAL_STORAGE_KEY = 'activeUserId'; // Key for saving the ID
 
 // --- Datos y Categorías Iniciales ---
 const datosIniciales = [
@@ -66,7 +67,14 @@ function AuthWrapper() {
         const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setAuthUserId(user.uid);
-                if (!activeUserId) setActiveUserId(user.uid);
+                // ***** CAMBIO IMPORTANTE #1 *****
+                // Al iniciar, revisamos si hay un ID guardado en la memoria del navegador.
+                const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (savedId) {
+                    setActiveUserId(savedId); // Si existe, lo usamos.
+                } else {
+                    setActiveUserId(user.uid); // Si no, usamos el nuestro.
+                }
             } else {
                 setAuthUserId(null);
                 setActiveUserId(null);
@@ -115,10 +123,8 @@ function AuthWrapper() {
   }, [db, activeUserId]);
 
 
-  // ***** CAMBIO IMPORTANTE #1 *****
-  // Quitamos la comprobación de seguridad. Ahora cualquiera que tenga el ID puede guardar.
   const saveToFirebase = async (updatedTarjetas) => {
-    if (activeUserId && db) { // <-- Se eliminó la condición "activeUserId === authUserId"
+    if (activeUserId && db) {
       const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
       try {
         await setDoc(userDocRef, { tarjetas: updatedTarjetas });
@@ -126,10 +132,22 @@ function AuthWrapper() {
     }
   };
   
+  // ***** CAMBIO IMPORTANTE #2 *****
+  // Ahora, al cargar un ID, también lo guardamos en la memoria.
   const handleCargarId = () => {
-    if (idParaCargar && idParaCargar.trim() !== '' && idParaCargar.trim() !== activeUserId) {
-      setActiveUserId(idParaCargar.trim());
+    const idToLoad = idParaCargar.trim();
+    if (idToLoad && idToLoad !== activeUserId) {
+      setActiveUserId(idToLoad);
+      localStorage.setItem(LOCAL_STORAGE_KEY, idToLoad);
     }
+  };
+
+  // ***** NUEVA FUNCIÓN *****
+  // Permite volver a nuestro ID original.
+  const handleResetToMyId = () => {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setActiveUserId(authUserId);
+    setIdParaCargar('');
   };
 
   const tarjetaActiva = tarjetas.find(t => t.nombre === tarjetaSeleccionada);
@@ -265,8 +283,19 @@ function AuthWrapper() {
                     onChange={(e) => setIdParaCargar(e.target.value)}
                     className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                   />
-                  <button onClick={handleCargarId} className="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
+                  <button onClick={handleCargarId} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
+                  {/* ***** CAMBIO IMPORTANTE #3 ***** */}
+                  {/* Mostramos el botón de volver solo si no estamos viendo nuestro propio ID */}
+                  {authUserId !== activeUserId && (
+                    <button onClick={handleResetToMyId} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition font-semibold">Volver a mi ID</button>
+                  )}
               </div>
+              {/* Mostramos un aviso si estamos viendo datos ajenos */}
+              {authUserId !== activeUserId && (
+                <p className="text-yellow-400 text-xs mt-2 text-center">
+                    Estás viendo los datos de otro usuario.
+                </p>
+              )}
           </div>
         </div>
       )}
@@ -344,8 +373,6 @@ function AuthWrapper() {
                       <option key={cat} value={cat}>{cat}</option>
                       ))}
                   </select>
-                  {/* ***** CAMBIO IMPORTANTE #2 ***** */}
-                  {/* Quitamos el 'disabled' para que todos puedan añadir compras */}
                   <button 
                       type="submit" 
                       className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md"
@@ -390,8 +417,6 @@ function AuthWrapper() {
                         )}
                         </div>
                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                            {/* ***** CAMBIO IMPORTANTE #3 ***** */}
-                            {/* Quitamos el 'disabled' de los botones de acción */}
                             {compra.cuotas > 1 && compra.cuotasRestantes > 0 && (
                                 <button onClick={() => pagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar</button>
                             )}
