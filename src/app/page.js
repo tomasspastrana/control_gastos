@@ -6,11 +6,19 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
-// Las variables de entorno se reemplazarán en el entorno de ejecución
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const appIdPath = typeof __app_id !== 'undefined' ? __app_id : 'control-de-gastos-app';
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// Se restaura el método original de configuración
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+};
 
+const appIdPath = 'control-de-gastos-app';
+const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
 const LOCAL_STORAGE_KEY = 'activeUserId'; // Key para guardar el ID
 
 // --- Datos y Categorías Iniciales ---
@@ -45,6 +53,12 @@ function AuthWrapper() {
 
     // Efecto para inicializar Firebase y autenticar al usuario
     useEffect(() => {
+        // Se añade una validación para asegurar que la configuración existe antes de inicializar
+        if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+            console.error("Configuración de Firebase incompleta. Revisa tus variables de entorno.");
+            setLoading(false);
+            return;
+        }
         try {
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
@@ -86,6 +100,7 @@ function AuthWrapper() {
         if (!db || !activeUserId) return;
 
         setLoading(true);
+        // La ruta se corrige para apuntar a una colección general
         const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
 
         const unsubscribeSnapshot = onSnapshot(userDocRef, async (snapshot) => {
@@ -122,8 +137,10 @@ function AuthWrapper() {
 
     const saveToFirebase = async (data) => {
         if (activeUserId && db) {
+            // La ruta se corrige para apuntar a una colección general
             const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
             try {
+                // Se guardan tarjetas y deudas juntas para consistencia
                 await setDoc(userDocRef, { tarjetas, deudas, ...data }, { merge: true });
             } catch (e) { console.error("Error al guardar en Firebase: ", e); }
         }
