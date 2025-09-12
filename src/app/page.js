@@ -326,7 +326,24 @@ function AuthWrapper() {
         return t;
     });
     saveToFirebase(tarjetasActualizadas);
+
   };
+  const resumenTotal = useMemo(() => {
+    return tarjetas.reduce((totalGeneral, tarjetaActual) => {
+
+      //Para cada tarjeta, calculamos su resumen individual
+      const resumendeTarjeta = tarjetaActual.compras.reduce((totalCuotas, compra) => {
+        if (compra.cuotasRestantes > 0 && !compra.postergada) {
+          return totalCuotas + parseFloat(compra.montoCuota);
+        }
+        return totalCuotas;
+      }, 0); //El resumen empieza en cero
+
+      // Se suma el resumen de la tarjeta atual al total general
+
+      return totalGeneral + resumendeTarjeta;
+    }, 0);
+  }, [tarjetas]); //Esto se recalcula solo si la lista de 'tarjetas' cambia
 
   if (loading) {
     return (
@@ -435,6 +452,14 @@ function AuthWrapper() {
                 >
                     Pagar Resumen
                 </button>
+            </div>
+            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-blue-500">
+                <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                    Resumen Total Tarjetas
+                </h2>
+                <p className="text-3xl sm:text-4xl font-extrabold text-blue-400">
+                    $ {resumenTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
             </div>
 
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
