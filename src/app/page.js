@@ -43,6 +43,8 @@ function AuthWrapper() {
   const [copySuccess, setCopySuccess] = useState(''); 
   const [postergada, setPostergada] = useState(false);
   const [cuotasPagadas, setCuotasPagadas] = useState('');
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [nuevaTarjeta, setNuevaTarjeta] = useState({ nombre: '', limite: '' });
 
   // Efecto para inicializar Firebase y autenticar al usuario
   useEffect(() => {
@@ -148,6 +150,28 @@ function AuthWrapper() {
 
   const tarjetaActiva = tarjetas.find(t => t.nombre === tarjetaSeleccionada);
 
+  const handleAgregarTarjeta = (e) => {
+    e.preventDefault(); //evita que la página se recargue al enviar el formulario
+
+    if(!nuevaTarjeta.nombre || !nuevaTarjeta.limite || parseFloat(nuevaTarjeta.limite) <=0) {
+      alert("Por favor, completa todos los campos correctamente.");
+      return;
+    }
+
+    const tarjetaAGuardar = {
+      nombre: nuevaTarjeta.nombre.trim(),
+      limite: parseFloat(nuevaTarjeta.limite),
+      saldo: parseFloat(nuevaTarjeta.limite),
+      compras:[]
+    };
+
+    const tarjetasActualizadas = [...tarjetas, tarjetaAGuardar];
+    saveToFirebase(tarjetasActualizadas);
+
+    setMostrarFormulario(false);
+    setNuevaTarjeta({ nombre: '', limite: '' });
+  }
+
   const guardarCompra = (e) => {
     e.preventDefault();
     if (!tarjetaActiva || !nuevaCompra.monto || !(parseFloat(nuevaCompra.monto) > 0) || !nuevaCompra.descripcion) return;
@@ -198,6 +222,7 @@ function AuthWrapper() {
     setPostergada(false);
     setCuotasPagadas(''); 
   };
+  
     
   const eliminarCompra = (compraIndex) => {
     const compraAEliminar = tarjetaActiva?.compras[compraIndex];
@@ -414,6 +439,38 @@ function AuthWrapper() {
             <option value="" disabled>No hay datos para mostrar</option>
           )}
         </select>
+        <button
+          onClick={() => setMostrarFormulario(true)}
+          className="w-full mt-4 bg-green-600 text-white font-bold p-3 rounded-xl hover:bg-green-700 transition"
+        >
+          + Añadir Tarjeta 
+        </button>
+        {mostrarFormulario && (
+          <form onSubmit={handleAgregarTarjeta} className="mt-4 p-4 bg-gray-700 rounded-xl flex flex-col gap-3 border-t-2 border-green-500">
+            <h3 className="text-lg font-semibold text-gray-300">Nueva Tarjeta</h3>
+            <input
+              type="text"
+              placeholder="Nombre de la tarjeta (ej: Naraja)"
+              value={nuevaTarjeta.nombre}
+              onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, nombre: e.target.valuue})}
+              className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500"
+              required
+            />
+            <input
+              type="number"
+              placeholder="Límite de la tarjeta"
+              value={nuevaTarjeta.limite}
+              onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, limite: e.target.value })}
+              className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500"
+              required
+            />
+            <div className="flex gap-2 mt-2">
+              <button type="submit"className="flex-1 bg-green-600 text-white p-2 rounded-md hober:bg-green-700" >Guardar</button>
+              <button type="button" onClick={() => setMostrarFormulario(false)} className="flex-1 bg-red-500 text-white p-2 rounded-md hover:bg-red-600">Cancelar</button>
+
+            </div>
+          </form>
+        )}
       </div>
 
       {tarjetaActiva && (
@@ -586,4 +643,5 @@ function AuthWrapper() {
 export default function HomePage() {
   return <AuthWrapper />;
 }
+
 
