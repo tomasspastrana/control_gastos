@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
+// Se restaura el método original de configuración
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -18,14 +19,14 @@ const firebaseConfig = {
 
 const appIdPath = 'control-de-gastos-app';
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
-const LOCAL_STORAGE_KEY = 'activeUserId';
+const LOCAL_STORAGE_KEY = 'activeUserId'; // Key para guardar el ID
 
 // --- Datos y Categorías Iniciales ---
 const datosIniciales = {
     tarjetas: [
-        { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [], mostrarSaldo: true },
-        { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: true },
-        { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: true },
+        { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
+        { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
+        { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
     ],
     deudas: []
 };
@@ -35,12 +36,11 @@ const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transport
 function AuthWrapper() {
     const [tarjetas, setTarjetas] = useState([]);
     const [deudas, setDeudas] = useState([]);
-    const [seleccion, setSeleccion] = useState(null);
+    const [seleccion, setSeleccion] = useState(null); // Puede ser nombre de tarjeta o "Deudas"
     const [nuevoItem, setNuevoItem] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
-    const [itemEnEdicion, setItemEnEdicion] = useState(null);
+    const [itemEnEdicion, setItemEnEdicion] = useState(null); // index del item
     const [loading, setLoading] = useState(true);
     const [db, setDb] = useState(null);
-    const [isDataLoaded, setIsDataLoaded] = useState(false); // **CAMBIO 1: Nueva bandera de estado**
 
     const [authUserId, setAuthUserId] = useState(null);
     const [activeUserId, setActiveUserId] = useState(null);
@@ -51,9 +51,11 @@ function AuthWrapper() {
     const [mostrarFormularioTarjeta, setMostrarFormularioTarjeta] = useState(false);
     const [nuevaTarjeta, setNuevaTarjeta] = useState({ nombre: '', limite: '', mostrarSaldo: true });
 
+    // Efecto para inicializar Firebase y autenticar al usuario
     useEffect(() => {
+        // Se añade una validación para asegurar que la configuración existe antes de inicializar
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-            console.error("Configuración de Firebase incompleta.");
+            console.error("Configuración de Firebase incompleta. Revisa tus variables de entorno.");
             setLoading(false);
             return;
         }
@@ -75,7 +77,11 @@ function AuthWrapper() {
                 if (user) {
                     setAuthUserId(user.uid);
                     const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
-                    setActiveUserId(savedId || user.uid);
+                    const idToUse = savedId || user.uid;
+                    setActiveUserId(idToUse);
+                    if (!savedId) {
+                        localStorage.setItem(LOCAL_STORAGE_KEY, user.uid);
+                    }
                 } else {
                     setAuthUserId(null);
                     setActiveUserId(null);
@@ -89,59 +95,86 @@ function AuthWrapper() {
         }
     }, []);
 
-    // **CAMBIO 2: Efecto para reiniciar la bandera cuando cambia el usuario**
-    useEffect(() => {
-        setIsDataLoaded(false);
-        setSeleccion(null); // Reiniciar selección para el nuevo usuario
-    }, [activeUserId]);
-
-
-    // **CAMBIO 3: Lógica de carga de datos corregida y simplificada**
+    // Efecto para cargar los datos del usuario activo
     useEffect(() => {
         if (!db || !activeUserId) return;
 
-        setLoading(true);
-        const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
+        const loadAndMigrateData = async () => {
+            setLoading(true);
+            const userDocRefGeneral = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
+            const userDocRefOld = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
 
-        const unsubscribe = onSnapshot(userDocRef, async (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.data();
-                const loadedTarjetas = data.tarjetas || [];
-                setTarjetas(loadedTarjetas);
+            // 1. Intentamos leer los datos de la nueva ubicación
+            const generalSnapshot = await getDoc(userDocRefGeneral);
+
+            if (generalSnapshot.exists()) {
+                // Si existen, los cargamos y nos quedamos escuchando cambios
+                const data = generalSnapshot.data();
+                setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
-
-                // Se establece la selección solo en la carga inicial para este usuario
-                if (!isDataLoaded) {
-                    setSeleccion(loadedTarjetas.length > 0 ? loadedTarjetas[0].nombre : "Deudas");
-                    setIsDataLoaded(true);
-                }
+                setSeleccion(data.tarjetas?.[0]?.nombre || "Deudas");
             } else {
-                // Si el documento no existe, se crea con datos iniciales
-                if (activeUserId === authUserId) {
-                    await setDoc(userDocRef, datosIniciales);
-                    // onSnapshot se disparará de nuevo, ejecutando el bloque de arriba
+                // 2. Si no existen, buscamos en la ubicación antigua para migrar
+                const oldSnapshot = await getDoc(userDocRefOld);
+                if (oldSnapshot.exists()) {
+                    console.log("Migrando datos antiguos...");
+                    const oldData = oldSnapshot.data();
+                    const migratedData = {
+                        tarjetas: oldData.tarjetas || [],
+                        deudas: [] 
+                    };
+                    await setDoc(userDocRefGeneral, migratedData); // Guardamos en la nueva ubicación
+                    setTarjetas(migratedData.tarjetas);
+                    setDeudas(migratedData.deudas);
+                    setSeleccion(migratedData.tarjetas?.[0]?.nombre || "Deudas");
+                    console.log("¡Datos migrados con éxito!");
                 } else {
-                    // Viendo un ID que no existe, se limpian los datos
-                    setTarjetas([]);
-                    setDeudas([]);
-                    setSeleccion(null);
-                    setIsDataLoaded(true);
+                    // 3. Si no hay datos en ninguna parte, creamos los iniciales
+                    if (activeUserId === authUserId) {
+                        await setDoc(userDocRefGeneral, datosIniciales);
+                        setTarjetas(datosIniciales.tarjetas);
+                        setDeudas(datosIniciales.deudas);
+                        setSeleccion(datosIniciales.tarjetas?.[0]?.nombre || "Deudas");
+                    } else {
+                        setTarjetas([]);
+                        setDeudas([]);
+                        setSeleccion(null);
+                    }
                 }
             }
             setLoading(false);
-        }, (error) => {
-            console.error("Error al leer de Firestore:", error);
-            setLoading(false);
+
+            // 4. Finalmente, nos suscribimos a los cambios en tiempo real en la nueva ubicación
+            const unsubscribe = onSnapshot(userDocRefGeneral, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.data();
+                    setTarjetas(data.tarjetas || []);
+                    setDeudas(data.deudas || []);
+                }
+            });
+
+            return unsubscribe; // Devolvemos la función para limpiar el listener
+        };
+
+        let unsubscribe;
+        loadAndMigrateData().then(unsub => {
+            unsubscribe = unsub;
         });
 
-        return () => unsubscribe();
-    }, [db, activeUserId, authUserId, isDataLoaded]);
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+        };
+    }, [db, activeUserId, authUserId]);
 
 
     const saveToFirebase = async (data) => {
         if (activeUserId && db) {
+            // La ruta se corrige para apuntar a una colección general
             const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
             try {
+                // Se guardan tarjetas y deudas juntas para consistencia
                 await setDoc(userDocRef, { tarjetas, deudas, ...data }, { merge: true });
             } catch (e) { console.error("Error al guardar en Firebase: ", e); }
         }
@@ -150,8 +183,8 @@ function AuthWrapper() {
     const handleCargarId = () => {
         const idToLoad = idParaCargar.trim();
         if (idToLoad && idToLoad !== activeUserId) {
-            localStorage.setItem(LOCAL_STORAGE_KEY, idToLoad);
             setActiveUserId(idToLoad);
+            localStorage.setItem(LOCAL_STORAGE_KEY, idToLoad);
         }
     };
 
@@ -161,17 +194,24 @@ function AuthWrapper() {
         setIdParaCargar('');
     };
     
+    // --- Lógica de Selección Optimizada ---
     const { esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
         const esDeudas = seleccion === 'Deudas';
         const tarjeta = !esDeudas ? tarjetas.find(t => t.nombre === seleccion) : null;
         const items = esDeudas ? deudas : (tarjeta?.compras || []);
-        return { esVistaDeudas, tarjetaActiva, itemsActivos };
+        return {
+            esVistaDeudas: esDeudas,
+            tarjetaActiva: tarjeta,
+            itemsActivos: items
+        };
     }, [seleccion, tarjetas, deudas]);
+
 
     const handleAgregarTarjeta = (e) => {
         e.preventDefault();
-        if (!nuevaTarjeta.nombre || !nuevaTarjeta.limite || parseFloat(nuevaTarjeta.limite) <= 0) return;
-        
+        if (!nuevaTarjeta.nombre || !nuevaTarjeta.limite || parseFloat(nuevaTarjeta.limite) <= 0) {
+            return;
+        }
         const tarjetaAGuardar = {
             nombre: nuevaTarjeta.nombre.trim(),
             limite: parseFloat(nuevaTarjeta.limite),
@@ -206,20 +246,25 @@ function AuthWrapper() {
         };
 
         if (esVistaDeudas) {
-            const deudasActualizadas = itemEnEdicion !== null
-                ? deudas.map((d, i) => (i === itemEnEdicion ? itemFinal : d))
-                : [...deudas, itemFinal];
+            let deudasActualizadas;
+            if (itemEnEdicion !== null) {
+                deudasActualizadas = deudas.map((d, i) => i === itemEnEdicion ? itemFinal : d);
+            } else {
+                deudasActualizadas = [...deudas, itemFinal];
+            }
             saveToFirebase({ deudas: deudasActualizadas });
-        } else if (tarjetaActiva) {
+        } else if(tarjetaActiva) {
             const tarjetasActualizadas = tarjetas.map(t => {
                 if (t.nombre === seleccion) {
                     let saldoActualizado = t.saldo;
-                    const comprasActualizadas = itemEnEdicion !== null
-                        ? t.compras.map((c, i) => (i === itemEnEdicion ? itemFinal : c))
-                        : [...t.compras, itemFinal];
+                    let comprasActualizadas;
 
                     if (itemEnEdicion !== null) {
-                        saldoActualizado += t.compras[itemEnEdicion].montoTotal;
+                        const compraOriginal = t.compras[itemEnEdicion];
+                        saldoActualizado += compraOriginal.montoTotal;
+                        comprasActualizadas = t.compras.map((c, i) => i === itemEnEdicion ? itemFinal : c);
+                    } else {
+                        comprasActualizadas = [...t.compras, itemFinal];
                     }
                     saldoActualizado -= itemFinal.montoTotal;
                     return { ...t, saldo: saldoActualizado, compras: comprasActualizadas };
@@ -235,17 +280,20 @@ function AuthWrapper() {
         setCuotasPagadas('');
     };
 
+
     const eliminarItem = (itemIndex) => {
-        if (esVistaDeudas) {
-            saveToFirebase({ deudas: deudas.filter((_, i) => i !== itemIndex) });
+        if(esVistaDeudas) {
+            const deudasActualizadas = deudas.filter((_, i) => i !== itemIndex);
+            saveToFirebase({ deudas: deudasActualizadas });
         } else if (tarjetaActiva) {
             const itemAEliminar = tarjetaActiva.compras[itemIndex];
             if (!itemAEliminar) return;
-            
+            const montoADevolver = itemAEliminar.montoTotal;
+
             const tarjetasActualizadas = tarjetas.map(t =>
                 t.nombre === seleccion
                     ? { ...t,
-                        saldo: t.saldo + itemAEliminar.montoTotal,
+                        saldo: t.saldo + montoADevolver,
                         compras: t.compras.filter((_, i) => i !== itemIndex)
                       }
                     : t
@@ -265,56 +313,79 @@ function AuthWrapper() {
         });
         setItemEnEdicion(itemIndex);
         setPostergada(itemAEditar.postergada || false);
-        setCuotasPagadas(String(itemAEditar.cuotas - itemAEditar.cuotasRestantes || ''));
-        window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
+        const pagadas = itemAEditar.cuotas - itemAEditar.cuotasRestantes;
+        setCuotasPagadas(pagadas > 0 ? String(pagadas) : '');
+         window.scrollTo(0, document.body.scrollHeight / 2);
     };
 
     const handleRecalcularSaldo = () => {
         if (!tarjetaActiva) return;
         const totalGastado = tarjetaActiva.compras.reduce((total, compra) => total + compra.montoTotal, 0);
         const saldoCorrecto = tarjetaActiva.limite - totalGastado;
-        saveToFirebase({ 
-            tarjetas: tarjetas.map(t => t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t) 
-        });
+        const tarjetasActualizadas = tarjetas.map(t =>
+            t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
+        );
+        saveToFirebase({ tarjetas: tarjetasActualizadas });
     };
 
-    const resumenGastos = useMemo(() => itemsActivos.reduce((resumen, item) => {
+    const resumenGastos = itemsActivos.reduce((resumen, item) => {
         resumen[item.categoria] = (resumen[item.categoria] || 0) + item.montoTotal;
         return resumen;
-    }, {}), [itemsActivos]);
+    }, {});
 
     const handleCopyToClipboard = () => {
         if (!authUserId) return;
-        navigator.clipboard.writeText(authUserId).then(() => {
+        const textArea = document.createElement("textarea");
+        textArea.value = authUserId;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
             setCopySuccess('¡ID Copiado!');
             setTimeout(() => setCopySuccess(''), 2000);
-        });
+        } catch (err) {
+            console.error('Error al copiar ID: ', err);
+        }
+        document.body.removeChild(textArea);
     };
 
-    const resumenMes = useMemo(() => itemsActivos.reduce((total, item) => {
-        if (item.cuotasRestantes > 0 && !item.postergada) {
-            return total + item.montoCuota;
-        }
-        return total;
-    }, 0), [itemsActivos]);
+    const resumenMes = useMemo(() => {
+        if (!itemsActivos) return 0;
+        return itemsActivos.reduce((total, item) => {
+            if (item.cuotasRestantes > 0 && !item.postergada) {
+                return total + parseFloat(item.montoCuota);
+            }
+            return total;
+        }, 0);
+    }, [itemsActivos]);
 
     const handlePagarResumen = () => {
         if (resumenMes <= 0) return;
         
-        const procesarItems = (items) => items.map(item => {
-            if (item.cuotasRestantes > 0 && !item.postergada) {
-                const nuevasCuotasRestantes = item.cuotasRestantes - 1;
-                return { ...item, cuotasRestantes: nuevasCuotasRestantes, pagada: nuevasCuotasRestantes === 0, postergada: false };
-            }
-            return { ...item, postergada: false };
-        });
+        const procesarItems = (items) => {
+            return items.map(item => {
+                let updatedItem = { ...item };
+                if (updatedItem.cuotasRestantes > 0 && !updatedItem.postergada) {
+                    const nuevasCuotasRestantes = updatedItem.cuotasRestantes - 1;
+                    updatedItem.cuotasRestantes = nuevasCuotasRestantes;
+                    updatedItem.pagada = nuevasCuotasRestantes === 0;
+                }
+                if (updatedItem.postergada) {
+                    updatedItem.postergada = false;
+                }
+                return updatedItem;
+            });
+        };
 
-        if (esVistaDeudas) {
-            saveToFirebase({ deudas: procesarItems(deudas) });
+        if(esVistaDeudas) {
+            const deudasActualizadas = procesarItems(deudas);
+            saveToFirebase({ deudas: deudasActualizadas });
         } else if (tarjetaActiva) {
+            const comprasDespuesDelPago = procesarItems(tarjetaActiva.compras);
             const tarjetasActualizadas = tarjetas.map(t => {
                 if (t.nombre === seleccion) {
-                    return { ...t, saldo: Math.min(t.limite, t.saldo + resumenMes), compras: procesarItems(t.compras) };
+                    const nuevoSaldo = Math.min(t.limite, t.saldo + resumenMes);
+                    return { ...t, saldo: nuevoSaldo, compras: comprasDespuesDelPago };
                 }
                 return t;
             });
@@ -326,16 +397,23 @@ function AuthWrapper() {
         const item = itemsActivos[itemIndex];
         if (!item || item.cuotasRestantes <= 0) return;
 
-        const actualizarItem = (c, i) => (i === itemIndex)
-            ? { ...c, cuotasRestantes: c.cuotasRestantes - 1, pagada: c.cuotasRestantes - 1 === 0 }
-            : c;
+        const actualizarItem = (c, i) => {
+            if (i === itemIndex) {
+                const nuevasCuotasRestantes = c.cuotasRestantes - 1;
+                return { ...c, cuotasRestantes: nuevasCuotasRestantes, pagada: nuevasCuotasRestantes === 0 };
+            }
+            return c;
+        };
         
         if (esVistaDeudas) {
-            saveToFirebase({ deudas: deudas.map(actualizarItem) });
+            const deudasActualizadas = deudas.map(actualizarItem);
+            saveToFirebase({ deudas: deudasActualizadas });
         } else if (tarjetaActiva) {
             const tarjetasActualizadas = tarjetas.map(t => {
                 if (t.nombre === seleccion) {
-                    return { ...t, saldo: Math.min(t.limite, t.saldo + item.montoCuota), compras: t.compras.map(actualizarItem) };
+                    const nuevoSaldo = Math.min(t.limite, t.saldo + item.montoCuota);
+                    const comprasActualizadas = t.compras.map(actualizarItem);
+                    return { ...t, saldo: nuevoSaldo, compras: comprasActualizadas };
                 }
                 return t;
             });
@@ -346,15 +424,18 @@ function AuthWrapper() {
     const resumenTotalGeneral = useMemo(() => {
         const calcularTotalMes = (items) => items.reduce((total, item) => {
             if (item.cuotasRestantes > 0 && !item.postergada) {
-                return total + item.montoCuota;
+                return total + parseFloat(item.montoCuota);
             }
             return total;
         }, 0);
 
-        return tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0) + calcularTotalMes(deudas);
+        const totalTarjetas = tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0);
+        const totalDeudas = calcularTotalMes(deudas);
+        
+        return totalTarjetas + totalDeudas;
     }, [tarjetas, deudas]);
 
-    if (loading && !isDataLoaded) {
+    if (loading) {
         return (
             <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white font-sans">
                 <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-teal-500"></div>
@@ -371,7 +452,7 @@ function AuthWrapper() {
 
             {authUserId && (
                 <div className="bg-gray-800 p-4 rounded-xl shadow-md w-full max-w-sm sm:max-w-md mb-8 flex flex-col items-center border-t-4 border-teal-500">
-                    <p className="text-sm text-gray-400">ID para compartir:</p>
+                    <p className="text-sm text-gray-400">ID de este Dispositivo (para compartir):</p>
                     <div className="flex items-center space-x-2 mt-1">
                         <span className="font-mono text-xs sm:text-sm bg-gray-700 p-2 rounded-md truncate max-w-[200px]">{authUserId}</span>
                         <button onClick={handleCopyToClipboard} className="bg-teal-600 text-white p-2 rounded-md hover:bg-teal-700 transition">
@@ -384,7 +465,13 @@ function AuthWrapper() {
                     <div className="w-full mt-4">
                         <p className="text-sm text-gray-400 mb-1">Cargar datos desde otro ID:</p>
                         <div className="flex items-center space-x-2">
-                            <input type="text" placeholder="Pega un ID aquí" value={idParaCargar} onChange={(e) => setIdParaCargar(e.target.value)} className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                            <input
+                                type="text"
+                                placeholder="Pega un ID aquí"
+                                value={idParaCargar}
+                                onChange={(e) => setIdParaCargar(e.target.value)}
+                                className="p-2 w-full rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                            />
                             <button onClick={handleCargarId} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition font-semibold">Cargar</button>
                             {authUserId !== activeUserId && (
                                 <button onClick={handleResetToMyId} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition font-semibold">Mi ID</button>
@@ -392,7 +479,7 @@ function AuthWrapper() {
                         </div>
                         {authUserId !== activeUserId && (
                             <p className="text-yellow-400 text-xs mt-2 text-center">
-                                Estás viendo los datos de otro usuario.
+                                Estás viendo los datos de otro usuario. Los cambios se guardarán en ese ID.
                             </p>
                         )}
                     </div>
@@ -400,20 +487,33 @@ function AuthWrapper() {
             )}
 
             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
-                <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">Seleccionar Tarjeta o Deudas</h2>
-                <select value={seleccion || ''} onChange={(e) => setSeleccion(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
-                    {tarjetas.map(t => (<option key={t.nombre} value={t.nombre}>{t.nombre}</option>))}
+                <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
+                    Seleccionar Tarjeta o Deudas
+                </h2>
+                <select
+                    value={seleccion || ''}
+                    onChange={(e) => setSeleccion(e.target.value)}
+                    className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                >
+                    {tarjetas.map(t => (
+                        <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
+                    ))}
                     <option value="Deudas">Deudas</option>
                 </select>
-                <button onClick={() => setMostrarFormularioTarjeta(true)} className="w-full mt-4 bg-green-600 text-white font-bold p-3 rounded-xl hover:bg-green-700 transition">+ Añadir Nueva Tarjeta</button>
+                <button
+                    onClick={() => setMostrarFormularioTarjeta(true)}
+                    className="w-full mt-4 bg-green-600 text-white font-bold p-3 rounded-xl hover:bg-green-700 transition"
+                >
+                    + Añadir Nueva Tarjeta
+                </button>
                 {mostrarFormularioTarjeta && (
                     <form onSubmit={handleAgregarTarjeta} className="mt-4 p-4 bg-gray-700 rounded-xl flex flex-col gap-3 border-t-2 border-green-500">
                         <h3 className="text-lg font-semibold text-gray-300">Nueva Tarjeta</h3>
                         <input type="text" placeholder="Nombre de la tarjeta" value={nuevaTarjeta.nombre} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, nombre: e.target.value })} className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500" required />
-                        <input type="number" placeholder="Límite" value={nuevaTarjeta.limite} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, limite: e.target.value })} className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500" required />
-                        <div className="flex items-center gap-2 text-gray-300 mt-2">
+                        <input type="number" placeholder="Límite de la tarjeta" value={nuevaTarjeta.limite} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, limite: e.target.value })} className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500" required />
+                         <div className="flex items-center gap-2 text-gray-300 mt-2">
                             <input type="checkbox" id="mostrar-saldo-checkbox" checked={nuevaTarjeta.mostrarSaldo} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, mostrarSaldo: e.target.checked })} />
-                            <label htmlFor="mostrar-saldo-checkbox">Mostrar saldo</label>
+                            <label htmlFor="mostrar-saldo-checkbox">Mostrar saldo por defecto</label>
                         </div>
                         <div className="flex gap-2 mt-2">
                             <button type="submit" className="flex-1 bg-green-600 text-white p-2 rounded-md hover:bg-green-700 font-semibold transition">Guardar</button>
@@ -423,37 +523,45 @@ function AuthWrapper() {
                 )}
             </div>
 
-            {isDataLoaded && seleccion && (
+            {seleccion && (
                 <>
-                    {!esVistaDeudas && tarjetaActiva?.mostrarSaldo && (
+                    {!esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo && (
                         <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
                             <div className="flex justify-between items-center mb-2">
                                 <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
-                                <button onClick={handleRecalcularSaldo} title="Recalcular saldo" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                                <button onClick={handleRecalcularSaldo} title="Recalcular saldo si es incorrecto" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
                             </div>
-                            <p className="text-3xl sm:text-4xl font-extrabold text-green-400">$ {(tarjetaActiva.saldo || 0).toLocaleString('es-AR')}</p>
-                            <p className="text-sm sm:text-lg text-gray-400 mt-1">Límite: $ {(tarjetaActiva.limite || 0).toLocaleString('es-AR')}</p>
+                            <p className="text-3xl sm:text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
+                            <p className="text-sm sm:text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
                         </div>
                     )}
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-blue-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">Resumen del Mes ({seleccion})</h2>
+                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                            Resumen del Mes ({seleccion})
+                        </h2>
                         <p className="text-3xl sm:text-4xl font-extrabold text-blue-400">$ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        <button onClick={handlePagarResumen} disabled={resumenMes <= 0} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar Resumen</button>
+                        <button onClick={handlePagarResumen} disabled={resumenMes <= 0} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar Resumen</button>
                     </div>
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-purple-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">Resumen Total General</h2>
-                        <p className="text-3xl sm:text-4xl font-extrabold text-purple-400">$ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                            Resumen Total General
+                        </h2>
+                        <p className="text-3xl sm:text-4xl font-extrabold text-purple-400">
+                            $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
                     </div>
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">{itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}</h2>
+                        <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
+                            {itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}
+                        </h2>
                         <form onSubmit={guardarItem} className="flex flex-col gap-4">
                             <input type="text" placeholder="Descripción" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
                             <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
-                            <input type="number" placeholder="N° de cuotas" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
-                            <input type="number" placeholder="Cuotas ya pagadas" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                            <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                            <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
                             <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
                                 {categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
                             </select>
@@ -461,7 +569,9 @@ function AuthWrapper() {
                                 <input type="checkbox" id="postergada-checkbox" checked={postergada} onChange={(e) => setPostergada(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500" />
                                 <label htmlFor="postergada-checkbox">Pagar en el próximo resumen</label>
                             </div>
-                            <button type="submit" className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition shadow-md">{itemEnEdicion !== null ? 'Guardar Cambios' : `Añadir ${esVistaDeudas ? 'Deuda' : 'Compra'}`}</button>
+                            <button type="submit" className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md">
+                                {itemEnEdicion !== null ? 'Guardar Cambios' : `Añadir ${esVistaDeudas ? 'Deuda' : 'Compra'}`}
+                            </button>
                         </form>
                     </div>
                     
@@ -483,7 +593,9 @@ function AuthWrapper() {
                                             <p className="text-sm text-gray-400 italic mt-1">Cuotas restantes: {item.cuotasRestantes}</p>
                                         </div>
                                         <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                                            {item.cuotasRestantes > 0 && ( <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button> )}
+                                            {item.cuotasRestantes > 0 && (
+                                                <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
+                                            )}
                                             <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={item.pagada}>Editar</button>
                                             <button onClick={() => eliminarItem(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
                                         </div>
