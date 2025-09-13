@@ -24,12 +24,13 @@ const LOCAL_STORAGE_KEY = 'activeUserId'; // Key para guardar el ID
 // --- Datos y Categorías Iniciales ---
 const datosIniciales = {
     tarjetas: [
-        { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [] },
-        { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [] },
-        { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [] },
+        { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [], mostrarSaldo: true },
+        { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: false },
+        { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: false },
     ],
     deudas: []
 };
+
 
 const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transporte', 'Entretenimiento', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
@@ -430,10 +431,22 @@ function AuthWrapper() {
         }, 0);
 
         const totalTarjetas = tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0);
-        const totalDeudas = calcularTotalMes(deudas);
         
-        return totalTarjetas + totalDeudas;
-    }, [tarjetas, deudas]);
+        
+        return totalTarjetas;
+    }, [tarjetas]);
+
+    const resumenTotalDeudas = useMemo(() => {
+        const calcularTotalMes = (items) => items.reduce((total, item) => {
+            if (item.cuotasRestantes > 0 && !item.postergada) {
+                return total + parseFloat(item.montoCuota);
+            }
+            return total;
+        }, 0);
+        const totalDeudas = calcularTotalMes(deudas);
+        return totalDeudas;
+    }, [deudas]);
+
 
     if (loading) {
         return (
@@ -546,12 +559,22 @@ function AuthWrapper() {
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-purple-500">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                            Resumen Total General
+                            Resumen Total De Tarjetas
                         </h2>
                         <p className="text-3xl sm:text-4xl font-extrabold text-purple-400">
                             $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
+                    {esVistaDeudas && (
+                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-red-500">
+                            <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                                Resumen Mensual de Deudas
+                            </h2>
+                            <p className="text-3xl sm:text-4xl font-extrabold text-red-400">
+                                $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                        </div>
+                    )}
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
