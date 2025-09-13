@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
 // Se restaura el método original de configuración
@@ -112,17 +112,39 @@ function AuthWrapper() {
                  if (seleccion === null) {
                     setSeleccion(loadedTarjetas.length > 0 ? loadedTarjetas[0].nombre : "Deudas");
                 }
-            } else {
-                if (activeUserId === authUserId && authUserId !== null) {
-                    await setDoc(userDocRef, datosIniciales);
-                    setTarjetas(datosIniciales.tarjetas);
-                    setDeudas(datosIniciales.deudas);
-                    setSeleccion(datosIniciales.tarjetas[0]?.nombre || "Deudas");
+            } 
+            else {
+                // ** LÓGICA DE MIGRACIÓN **
+                // Si no existen datos en "general", busca en la ubicación antigua "tarjetas"
+                const userDocRefOld = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
+                const oldSnapshot = await getDoc(userDocRefOld);
+
+                if (oldSnapshot.exists()) {
+                    // Si se encuentran datos antiguos, se migran a la nueva estructura
+                    console.log("Migrando datos antiguos...");
+                    const oldData = oldSnapshot.data();
+                    const migratedData = {
+                        tarjetas: oldData.tarjetas || [],
+                        deudas: [] // Se añade el array de deudas vacío
+                    };
+                    await setDoc(userDocRefGeneral, migratedData); // Se guardan los datos en la nueva ubicación
+                    setTarjetas(migratedData.tarjetas);
+                    setDeudas(migratedData.deudas);
+                    setSeleccion(migratedData.tarjetas.length > 0 ? migratedData.tarjetas[0].nombre : "Deudas");
+                    console.log("¡Datos migrados con éxito!");
                 } else {
-                    setTarjetas([]);
-                    setDeudas([]);
-                    setSeleccion(null);
-                    console.warn("El ID cargado no tiene datos.");
+                    // Si no hay datos en ninguna ubicación, se crean los datos iniciales
+                    if (activeUserId === authUserId && authUserId !== null) {
+                        await setDoc(userDocRefGeneral, datosIniciales);
+                        setTarjetas(datosIniciales.tarjetas);
+                        setDeudas(datosIniciales.deudas);
+                        setSeleccion(datosIniciales.tarjetas[0]?.nombre || "Deudas");
+                    } else {
+                        setTarjetas([]);
+                        setDeudas([]);
+                        setSeleccion(null);
+                        console.warn("El ID cargado no tiene datos.");
+                    }
                 }
             }
             setLoading(false);
