@@ -565,16 +565,16 @@ function AuthWrapper() {
                             $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
-                    {esVistaDeudas && (
-                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-red-500">
-                            <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                                Resumen Mensual de Deudas
-                            </h2>
-                            <p className="text-3xl sm:text-4xl font-extrabold text-red-400">
-                                $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                        </div>
-                    )}
+                    
+                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-red-500">
+                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
+                            Resumen Mensual de Deudas
+                        </h2>
+                        <p className="text-3xl sm:text-4xl font-extrabold text-red-400">
+                            $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                    </div>
+                    
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
