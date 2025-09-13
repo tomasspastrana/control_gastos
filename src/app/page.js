@@ -319,15 +319,23 @@ function AuthWrapper() {
          window.scrollTo(0, document.body.scrollHeight / 2);
     };
 
-    const handleRecalcularSaldo = () => {
-        if (!tarjetaActiva) return;
-        const totalGastado = tarjetaActiva.compras.reduce((total, compra) => total + compra.montoTotal, 0);
-        const saldoCorrecto = tarjetaActiva.limite - totalGastado;
-        const tarjetasActualizadas = tarjetas.map(t =>
-            t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
-        );
-        saveToFirebase({ tarjetas: tarjetasActualizadas });
-    };
+      const handleRecalcularSaldo = () => {
+      if (!tarjetaActiva) return;
+
+      // Calcula la deuda total pendiente sumando el valor de las cuotas restantes de cada compra.
+      const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
+          const deudaDeEstaCompra = compra.montoCuota * compra.cuotasRestantes;
+          return total + deudaDeEstaCompra;
+      }, 0);
+
+      // El saldo correcto es el límite menos la deuda que aún falta pagar.
+      const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
+
+      const tarjetasActualizadas = tarjetas.map(t =>
+          t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
+      );
+      saveToFirebase({ tarjetas: tarjetasActualizadas });
+  };
 
     const resumenGastos = itemsActivos.reduce((resumen, item) => {
         resumen[item.categoria] = (resumen[item.categoria] || 0) + item.montoTotal;
