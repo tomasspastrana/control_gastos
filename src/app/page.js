@@ -99,61 +99,73 @@ function AuthWrapper() {
     useEffect(() => {
         if (!db || !activeUserId) return;
 
-        setLoading(true);
-        // La ruta se corrige para apuntar a una colección general
-        const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
+        const loadAndMigrateData = async () => {
+            setLoading(true);
+            const userDocRefGeneral = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
+            const userDocRefOld = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
 
-        const unsubscribeSnapshot = onSnapshot(userDocRef, async (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.data();
-                const loadedTarjetas = data.tarjetas || [];
-                setTarjetas(loadedTarjetas);
+            // 1. Intentamos leer los datos de la nueva ubicación
+            const generalSnapshot = await getDoc(userDocRefGeneral);
+
+            if (generalSnapshot.exists()) {
+                // Si existen, los cargamos y nos quedamos escuchando cambios
+                const data = generalSnapshot.data();
+                setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
-                 if (seleccion === null) {
-                    setSeleccion(loadedTarjetas.length > 0 ? loadedTarjetas[0].nombre : "Deudas");
-                }
-            } 
-            else {
-                // ** LÓGICA DE MIGRACIÓN **
-                // Si no existen datos en "general", busca en la ubicación antigua "tarjetas"
-                const userDocRefOld = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
+                setSeleccion(data.tarjetas?.[0]?.nombre || "Deudas");
+            } else {
+                // 2. Si no existen, buscamos en la ubicación antigua para migrar
                 const oldSnapshot = await getDoc(userDocRefOld);
-
                 if (oldSnapshot.exists()) {
-                    // Si se encuentran datos antiguos, se migran a la nueva estructura
                     console.log("Migrando datos antiguos...");
                     const oldData = oldSnapshot.data();
                     const migratedData = {
                         tarjetas: oldData.tarjetas || [],
-                        deudas: [] // Se añade el array de deudas vacío
+                        deudas: [] 
                     };
-                    await setDoc(userDocRefGeneral, migratedData); // Se guardan los datos en la nueva ubicación
+                    await setDoc(userDocRefGeneral, migratedData); // Guardamos en la nueva ubicación
                     setTarjetas(migratedData.tarjetas);
                     setDeudas(migratedData.deudas);
-                    setSeleccion(migratedData.tarjetas.length > 0 ? migratedData.tarjetas[0].nombre : "Deudas");
+                    setSeleccion(migratedData.tarjetas?.[0]?.nombre || "Deudas");
                     console.log("¡Datos migrados con éxito!");
                 } else {
-                    // Si no hay datos en ninguna ubicación, se crean los datos iniciales
-                    if (activeUserId === authUserId && authUserId !== null) {
+                    // 3. Si no hay datos en ninguna parte, creamos los iniciales
+                    if (activeUserId === authUserId) {
                         await setDoc(userDocRefGeneral, datosIniciales);
                         setTarjetas(datosIniciales.tarjetas);
                         setDeudas(datosIniciales.deudas);
-                        setSeleccion(datosIniciales.tarjetas[0]?.nombre || "Deudas");
+                        setSeleccion(datosIniciales.tarjetas?.[0]?.nombre || "Deudas");
                     } else {
                         setTarjetas([]);
                         setDeudas([]);
                         setSeleccion(null);
-                        console.warn("El ID cargado no tiene datos.");
                     }
                 }
             }
             setLoading(false);
-        }, (error) => {
-            console.error("Error al leer de Firestore:", error);
-            setLoading(false);
+
+            // 4. Finalmente, nos suscribimos a los cambios en tiempo real en la nueva ubicación
+            const unsubscribe = onSnapshot(userDocRefGeneral, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.data();
+                    setTarjetas(data.tarjetas || []);
+                    setDeudas(data.deudas || []);
+                }
+            });
+
+            return unsubscribe; // Devolvemos la función para limpiar el listener
+        };
+
+        let unsubscribe;
+        loadAndMigrateData().then(unsub => {
+            unsubscribe = unsub;
         });
 
-        return () => unsubscribeSnapshot();
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+        };
     }, [db, activeUserId, authUserId]);
 
 
