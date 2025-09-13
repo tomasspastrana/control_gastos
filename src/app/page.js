@@ -538,7 +538,7 @@ function AuthWrapper() {
 
             {seleccion && (
                 <>
-                    {!esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo && (
+                    {!esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo !== false && (
                         <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
                             <div className="flex justify-between items-center mb-2">
                                 <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
