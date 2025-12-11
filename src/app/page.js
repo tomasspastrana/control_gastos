@@ -6,7 +6,6 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 // --- Configuración de Firebase ---
-// Se restaura el método original de configuración
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -19,7 +18,7 @@ const firebaseConfig = {
 
 const appIdPath = 'control-de-gastos-app';
 const initialAuthToken = process.env.NEXT_PUBLIC_INITIAL_AUTH_TOKEN || null;
-const LOCAL_STORAGE_KEY = 'activeUserId'; // Key para guardar el ID
+const LOCAL_STORAGE_KEY = 'activeUserId';
 
 // --- Datos y Categorías Iniciales ---
 const datosIniciales = {
@@ -31,15 +30,15 @@ const datosIniciales = {
     deudas: []
 };
 
-
 const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transporte', 'Entretenimiento', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
 
 function AuthWrapper() {
+    // 1. HOOKS DE ESTADO (useState)
     const [tarjetas, setTarjetas] = useState([]);
     const [deudas, setDeudas] = useState([]);
-    const [seleccion, setSeleccion] = useState(null); // Puede ser nombre de tarjeta o "Deudas"
+    const [seleccion, setSeleccion] = useState(null);
     const [nuevoItem, setNuevoItem] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
-    const [itemEnEdicion, setItemEnEdicion] = useState(null); // index del item
+    const [itemEnEdicion, setItemEnEdicion] = useState(null);
     const [loading, setLoading] = useState(true);
     const [db, setDb] = useState(null);
 
@@ -49,15 +48,16 @@ function AuthWrapper() {
     const [copySuccess, setCopySuccess] = useState('');
     const [postergada, setPostergada] = useState(false);
     const [cuotasPagadas, setCuotasPagadas] = useState('');
+
+    // Nuevos estados para pestañas y tarjetas
     const [mostrarFormularioTarjeta, setMostrarFormularioTarjeta] = useState(false);
     const [nuevaTarjeta, setNuevaTarjeta] = useState({ nombre: '', limite: '', mostrarSaldo: true });
     const [verHistorial, setVerHistorial] = useState(false);
 
-    // Efecto para inicializar Firebase y autenticar al usuario
+    // 2. HOOKS DE EFECTO (useEffect)
     useEffect(() => {
-        // Se añade una validación para asegurar que la configuración existe antes de inicializar
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-            console.error("Configuración de Firebase incompleta. Revisa tus variables de entorno.");
+            console.error("Configuración de Firebase incompleta.");
             setLoading(false);
             return;
         }
@@ -97,7 +97,6 @@ function AuthWrapper() {
         }
     }, []);
 
-    // Efecto para cargar los datos del usuario activo
     useEffect(() => {
         if (!db || !activeUserId) return;
 
@@ -106,17 +105,14 @@ function AuthWrapper() {
             const userDocRefGeneral = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
             const userDocRefOld = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/tarjetas`);
 
-            // 1. Intentamos leer los datos de la nueva ubicación
             const generalSnapshot = await getDoc(userDocRefGeneral);
 
             if (generalSnapshot.exists()) {
-                // Si existen, los cargamos y nos quedamos escuchando cambios
                 const data = generalSnapshot.data();
                 setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
                 setSeleccion(data.tarjetas?.[0]?.nombre || "Deudas");
             } else {
-                // 2. Si no existen, buscamos en la ubicación antigua para migrar
                 const oldSnapshot = await getDoc(userDocRefOld);
                 if (oldSnapshot.exists()) {
                     console.log("Migrando datos antiguos...");
@@ -125,13 +121,11 @@ function AuthWrapper() {
                         tarjetas: oldData.tarjetas || [],
                         deudas: []
                     };
-                    await setDoc(userDocRefGeneral, migratedData); // Guardamos en la nueva ubicación
+                    await setDoc(userDocRefGeneral, migratedData);
                     setTarjetas(migratedData.tarjetas);
                     setDeudas(migratedData.deudas);
                     setSeleccion(migratedData.tarjetas?.[0]?.nombre || "Deudas");
-                    console.log("¡Datos migrados con éxito!");
                 } else {
-                    // 3. Si no hay datos en ninguna parte, creamos los iniciales
                     if (activeUserId === authUserId) {
                         await setDoc(userDocRefGeneral, datosIniciales);
                         setTarjetas(datosIniciales.tarjetas);
@@ -146,7 +140,6 @@ function AuthWrapper() {
             }
             setLoading(false);
 
-            // 4. Finalmente, nos suscribimos a los cambios en tiempo real en la nueva ubicación
             const unsubscribe = onSnapshot(userDocRefGeneral, (snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.data();
@@ -155,7 +148,7 @@ function AuthWrapper() {
                 }
             });
 
-            return unsubscribe; // Devolvemos la función para limpiar el listener
+            return unsubscribe;
         };
 
         let unsubscribe;
@@ -170,13 +163,11 @@ function AuthWrapper() {
         };
     }, [db, activeUserId, authUserId]);
 
-
+    // 3. FUNCIONES AUXILIARES (No son hooks)
     const saveToFirebase = async (data) => {
         if (activeUserId && db) {
-            // La ruta se corrige para apuntar a una colección general
             const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
             try {
-                // Se guardan tarjetas y deudas juntas para consistencia
                 await setDoc(userDocRef, { tarjetas, deudas, ...data }, { merge: true });
             } catch (e) { console.error("Error al guardar en Firebase: ", e); }
         }
@@ -196,7 +187,7 @@ function AuthWrapper() {
         setIdParaCargar('');
     };
 
-    // --- Lógica de Selección Optimizada ---
+    // 4. HOOKS DE MEMORIZACIÓN (useMemo) - Deben ir ANTES de cualquier return
     const { esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
         const esDeudas = seleccion === 'Deudas';
         const tarjeta = !esDeudas ? tarjetas.find(t => t.nombre === seleccion) : null;
@@ -208,7 +199,50 @@ function AuthWrapper() {
         };
     }, [seleccion, tarjetas, deudas]);
 
+    const resumenMes = useMemo(() => {
+        if (!itemsActivos) return 0;
+        return itemsActivos.reduce((total, item) => {
+            if (item.cuotasRestantes > 0 && !item.postergada) {
+                return total + parseFloat(item.montoCuota);
+            }
+            return total;
+        }, 0);
+    }, [itemsActivos]);
 
+    const resumenTotalGeneral = useMemo(() => {
+        const calcularTotalMes = (items) => items.reduce((total, item) => {
+            if (item.cuotasRestantes > 0 && !item.postergada) {
+                return total + parseFloat(item.montoCuota);
+            }
+            return total;
+        }, 0);
+        const totalTarjetas = tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0);
+        return totalTarjetas;
+    }, [tarjetas]);
+
+    const resumenTotalDeudas = useMemo(() => {
+        const calcularTotalMes = (items) => items.reduce((total, item) => {
+            if (item.cuotasRestantes > 0 && !item.postergada) {
+                return total + parseFloat(item.montoCuota);
+            }
+            return total;
+        }, 0);
+        const totalDeudas = calcularTotalMes(deudas);
+        return totalDeudas;
+    }, [deudas]);
+
+    // *** AQUÍ ESTABA EL PROBLEMA ***
+    // Este useMemo debe estar aquí, antes del `if (loading)`
+    const itemsVisualizados = useMemo(() => {
+        if (!itemsActivos) return [];
+        return itemsActivos.filter(item => {
+            if (verHistorial) return item.pagada; // Solo pagadas
+            return !item.pagada; // Solo pendientes
+        });
+    }, [itemsActivos, verHistorial]);
+
+
+    // 5. EVENT HANDLERS
     const handleAgregarTarjeta = (e) => {
         e.preventDefault();
         if (!nuevaTarjeta.nombre || !nuevaTarjeta.limite || parseFloat(nuevaTarjeta.limite) <= 0) {
@@ -282,7 +316,6 @@ function AuthWrapper() {
         setCuotasPagadas('');
     };
 
-
     const eliminarItem = (itemIndex) => {
         if (esVistaDeudas) {
             const deudasActualizadas = deudas.filter((_, i) => i !== itemIndex);
@@ -323,26 +356,16 @@ function AuthWrapper() {
 
     const handleRecalcularSaldo = () => {
         if (!tarjetaActiva) return;
-
-        // Calcula la deuda total pendiente sumando el valor de las cuotas restantes de cada compra.
         const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
             const deudaDeEstaCompra = compra.montoCuota * compra.cuotasRestantes;
             return total + deudaDeEstaCompra;
         }, 0);
-
-        // El saldo correcto es el límite menos la deuda que aún falta pagar.
         const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
-
         const tarjetasActualizadas = tarjetas.map(t =>
             t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
         );
         saveToFirebase({ tarjetas: tarjetasActualizadas });
     };
-
-    const resumenGastos = itemsActivos.reduce((resumen, item) => {
-        resumen[item.categoria] = (resumen[item.categoria] || 0) + item.montoTotal;
-        return resumen;
-    }, {});
 
     const handleCopyToClipboard = () => {
         if (!authUserId) return;
@@ -359,16 +382,6 @@ function AuthWrapper() {
         }
         document.body.removeChild(textArea);
     };
-
-    const resumenMes = useMemo(() => {
-        if (!itemsActivos) return 0;
-        return itemsActivos.reduce((total, item) => {
-            if (item.cuotasRestantes > 0 && !item.postergada) {
-                return total + parseFloat(item.montoCuota);
-            }
-            return total;
-        }, 0);
-    }, [itemsActivos]);
 
     const handlePagarResumen = () => {
         if (resumenMes <= 0) return;
@@ -432,32 +445,7 @@ function AuthWrapper() {
         }
     };
 
-    const resumenTotalGeneral = useMemo(() => {
-        const calcularTotalMes = (items) => items.reduce((total, item) => {
-            if (item.cuotasRestantes > 0 && !item.postergada) {
-                return total + parseFloat(item.montoCuota);
-            }
-            return total;
-        }, 0);
-
-        const totalTarjetas = tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0);
-
-
-        return totalTarjetas;
-    }, [tarjetas]);
-
-    const resumenTotalDeudas = useMemo(() => {
-        const calcularTotalMes = (items) => items.reduce((total, item) => {
-            if (item.cuotasRestantes > 0 && !item.postergada) {
-                return total + parseFloat(item.montoCuota);
-            }
-            return total;
-        }, 0);
-        const totalDeudas = calcularTotalMes(deudas);
-        return totalDeudas;
-    }, [deudas]);
-
-
+    // 6. RENDERIZADO CONDICIONAL (Returns) - SOLO AQUÍ PUEDE HABER RETURNS
     if (loading) {
         return (
             <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 text-white font-sans">
@@ -466,14 +454,6 @@ function AuthWrapper() {
             </main>
         );
     }
-
-    const itemsVisualizados = useMemo(() => {
-        if (!itemsActivos) return [];
-        return itemsActivos.filter(item => {
-            if (verHistorial) return item.pagada;
-            return !item.pagada;
-        });
-    }, [itemsActivos, verHistorial]);
 
     return (
         <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12 lg:p-24 bg-gray-900 text-white font-sans">
@@ -645,12 +625,9 @@ function AuthWrapper() {
                             </button>
                         </div>
 
-                        {/* LISTA DE ITEMS (Usando itemsVisualizados) */}
                         {itemsVisualizados.length > 0 ? (
                             <ul className="space-y-4">
                                 {itemsVisualizados.map((item, index) => {
-                                    // Truco: Necesitamos encontrar el índice real en la lista original para editar/borrar
-                                    // porque 'index' aquí es solo del filtrado.
                                     const realIndex = itemsActivos.indexOf(item);
 
                                     return (
@@ -663,17 +640,14 @@ function AuthWrapper() {
                                                 </div>
                                                 <p className="text-sm text-gray-400">{item.categoria}</p>
                                                 <p className="text-base text-gray-200">Total: $ {item.montoTotal.toLocaleString('es-AR')} ({item.cuotas} cuotas)</p>
-                                                {/* Solo mostramos valor cuota si no está pagada del todo, o si queremos referencia */}
                                                 <p className="text-base text-cyan-400">Valor cuota: $ {item.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                                 <p className="text-sm text-gray-400 italic mt-1">Cuotas restantes: {item.cuotasRestantes}</p>
                                             </div>
                                             <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                                                {/* Solo mostramos PAGAR si NO estamos en el historial */}
                                                 {!verHistorial && item.cuotasRestantes > 0 && (
                                                     <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
                                                 )}
 
-                                                {/* Editar y Eliminar siempre disponibles, pero usamos realIndex */}
                                                 <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={item.pagada && !verHistorial}>
                                                     {verHistorial ? 'Ver/Editar' : 'Editar'}
                                                 </button>
@@ -702,4 +676,3 @@ function AuthWrapper() {
 export default function HomePage() {
     return <AuthWrapper />;
 }
-
