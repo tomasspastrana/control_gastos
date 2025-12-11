@@ -189,11 +189,25 @@ function AuthWrapper() {
     };
 
     // 4. HOOKS DE MEMORIZACIÓN (useMemo) - Deben ir ANTES de cualquier return
-    const { esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
+    const { esVistaGeneral, esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
+        const esGeneral = seleccion === 'General';
         const esDeudas = seleccion === 'Deudas';
-        const tarjeta = !esDeudas ? tarjetas.find(t => t.nombre === seleccion) : null;
-        const items = esDeudas ? deudas : (tarjeta?.compras || []);
+
+        let items = [];
+        let tarjeta = null;
+
+        if (esGeneral) {
+            // Si es General, juntamos TODAS las compras de todas las tarjetas en una sola lista
+            items = tarjetas.flatMap(t => t.compras);
+        } else if (esDeudas) {
+            items = deudas;
+        } else {
+            tarjeta = tarjetas.find(t => t.nombre === seleccion);
+            items = tarjeta?.compras || [];
+        }
+
         return {
+            esVistaGeneral: esGeneral, // Nueva bandera
             esVistaDeudas: esDeudas,
             tarjetaActiva: tarjeta,
             itemsActivos: items
@@ -568,6 +582,7 @@ function AuthWrapper() {
                     onChange={(e) => setSeleccion(e.target.value)}
                     className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                 >
+                    <option value="General">Resumen General (Todas)</option>
                     {tarjetas.map(t => (
                         <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
                     ))}
@@ -626,14 +641,17 @@ function AuthWrapper() {
                             </div>
 
                             {/* 3. RESUMEN TOTAL TARJETAS */}
-                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-purple-500">
-                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
-                                    Resumen Total De Tarjetas
-                                </h2>
-                                <p className="text-4xl font-extrabold text-purple-400">
-                                    $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                            </div>
+                            {!esVistaGeneral && (
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-purple-500">
+                                    <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                        Resumen Total De Tarjetas
+                                    </h2>
+                                    <p className="text-4xl font-extrabold text-purple-400">
+                                        $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                            )}
+
 
                             {/* 4. RESUMEN DEUDAS */}
                             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-red-500">
@@ -733,29 +751,29 @@ function AuthWrapper() {
 
                     </div>
 
-
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
-                            {itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}
-                        </h2>
-                        <form onSubmit={guardarItem} className="flex flex-col gap-4">
-                            <input type="text" placeholder="Descripción" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
-                            <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
-                            <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
-                            <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
-                            <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
-                                {categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-                            </select>
-                            <div className="flex items-center gap-2 text-gray-300">
-                                <input type="checkbox" id="postergada-checkbox" checked={postergada} onChange={(e) => setPostergada(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500" />
-                                <label htmlFor="postergada-checkbox">Pagar en el próximo resumen</label>
-                            </div>
-                            <button type="submit" className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md">
-                                {itemEnEdicion !== null ? 'Guardar Cambios' : `Añadir ${esVistaDeudas ? 'Deuda' : 'Compra'}`}
-                            </button>
-                        </form>
-                    </div>
-
+                    {!esVistaGeneral && (
+                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
+                            <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
+                                {itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}
+                            </h2>
+                            <form onSubmit={guardarItem} className="flex flex-col gap-4">
+                                <input type="text" placeholder="Descripción" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
+                                <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
+                                <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                                <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                                <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                                    {categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                                </select>
+                                <div className="flex items-center gap-2 text-gray-300">
+                                    <input type="checkbox" id="postergada-checkbox" checked={postergada} onChange={(e) => setPostergada(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500" />
+                                    <label htmlFor="postergada-checkbox">Pagar en el próximo resumen</label>
+                                </div>
+                                <button type="submit" className="bg-teal-600 text-white font-bold p-3 rounded-xl hover:bg-teal-700 transition duration-300 ease-in-out shadow-md">
+                                    {itemEnEdicion !== null ? 'Guardar Cambios' : `Añadir ${esVistaDeudas ? 'Deuda' : 'Compra'}`}
+                                </button>
+                            </form>
+                        </div>
+                    )}
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-teal-500">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
