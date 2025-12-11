@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 // --- Configuración de Firebase ---
 const firebaseConfig = {
@@ -30,7 +31,7 @@ const datosIniciales = {
     deudas: []
 };
 
-const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transporte', 'Entretenimiento', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros'];
+const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transporte', 'Entretenimiento', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros', 'Transferencia', 'Electrodomésticos', 'Herramientas'];
 
 function AuthWrapper() {
     // 1. HOOKS DE ESTADO (useState)
@@ -240,6 +241,26 @@ function AuthWrapper() {
             return !item.pagada; // Solo pendientes
         });
     }, [itemsActivos, verHistorial]);
+
+    const COLORES_GRAFICO = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560', '#00E396', '#775DD0'];
+
+    const datosGrafico = useMemo(() => {
+        if (!itemsVisualizados || itemsVisualizados.length === 0) return [];
+
+        // 1. Agrupamos los montos por categoría
+        const agrupado = itemsVisualizados.reduce((acc, item) => {
+            const cat = item.categoria;
+            // Sumamos el monto total de la compra (puedes cambiarlo a item.montoCuota si prefieres ver flujo mensual)
+            acc[cat] = (acc[cat] || 0) + item.montoTotal;
+            return acc;
+        }, {});
+
+        // 2. Convertimos el objeto en un array para Recharts
+        return Object.keys(agrupado).map((key) => ({
+            name: key,
+            value: agrupado[key]
+        })).filter(d => d.value > 0); // Eliminamos categorías con 0
+    }, [itemsVisualizados]);
 
 
     // 5. EVENT HANDLERS
@@ -536,41 +557,95 @@ function AuthWrapper() {
 
             {seleccion && (
                 <>
-                    {!esVistaDeudas && tarjetaActiva && !tarjetaActiva.nombre.toUpperCase().includes('BBVA') && tarjetaActiva.mostrarSaldo !== false && (
-                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
-                            <div className="flex justify-between items-center mb-2">
-                                <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
-                                <button onClick={handleRecalcularSaldo} title="Recalcular saldo si es incorrecto" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                    {/* --- CONTENEDOR PRINCIPAL DE DOS COLUMNAS (GRID) --- */}
+                    <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 mt-4">
+
+                        {/* COLUMNA IZQUIERDA: RESÚMENES */}
+                        <div className="flex flex-col gap-6">
+
+                            {/* 1. SALDO (Solo si no es BBVA y no es Deudas) */}
+                            {!esVistaDeudas && tarjetaActiva && !tarjetaActiva.nombre.toUpperCase().includes('BBVA') && tarjetaActiva.mostrarSaldo !== false && (
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h2 className="text-xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
+                                        <button onClick={handleRecalcularSaldo} title="Recalcular saldo" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                                    </div>
+                                    <p className="text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
+                                    <p className="text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
+                                </div>
+                            )}
+
+                            {/* 2. RESUMEN DEL MES */}
+                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-blue-500">
+                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                    Resumen del Mes ({seleccion})
+                                </h2>
+                                <p className="text-4xl font-extrabold text-blue-400">$ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <button onClick={handlePagarResumen} disabled={resumenMes <= 0} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar Resumen</button>
                             </div>
-                            <p className="text-3xl sm:text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
-                            <p className="text-sm sm:text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
+
+                            {/* 3. RESUMEN TOTAL TARJETAS */}
+                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-purple-500">
+                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                    Resumen Total De Tarjetas
+                                </h2>
+                                <p className="text-4xl font-extrabold text-purple-400">
+                                    $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                            </div>
+
+                            {/* 4. RESUMEN DEUDAS */}
+                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-red-500">
+                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                    Resumen Mensual de Deudas
+                                </h2>
+                                <p className="text-4xl font-extrabold text-red-400">
+                                    $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                            </div>
                         </div>
-                    )}
 
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-blue-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                            Resumen del Mes ({seleccion})
-                        </h2>
-                        <p className="text-3xl sm:text-4xl font-extrabold text-blue-400">$ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        <button onClick={handlePagarResumen} disabled={resumenMes <= 0} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar Resumen</button>
-                    </div>
+                        {/* COLUMNA DERECHA: GRÁFICO (Se mostrará a la derecha en PC) */}
+                        <div className="flex flex-col">
+                            {datosGrafico.length > 0 ? (
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-full border-t-4 border-yellow-500 flex flex-col justify-center">
+                                    <h2 className="text-xl sm:text-2xl font-semibold mb-6 text-gray-300 text-center">
+                                        Distribución por Categoría
+                                    </h2>
+                                    {/* Aumentamos la altura del gráfico para aprovechar el espacio lateral */}
+                                    <div className="h-80 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie
+                                                    data={datosGrafico}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius={80} // Un poco más grueso
+                                                    outerRadius={110} // Un poco más grande
+                                                    paddingAngle={5}
+                                                    dataKey="value"
+                                                >
+                                                    {datosGrafico.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORES_GRAFICO[index % COLORES_GRAFICO.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip
+                                                    formatter={(value) => `$${value.toLocaleString('es-AR')}`}
+                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                />
+                                                <Legend iconType="circle" verticalAlign="bottom" height={36} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            ) : (
+                                // Placeholder si no hay datos para el gráfico, para que no quede el hueco vacío
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-full border-t-4 border-gray-600 flex items-center justify-center opacity-50">
+                                    <p className="text-gray-400 text-lg">Añade gastos para ver el análisis gráfico</p>
+                                </div>
+                            )}
+                        </div>
 
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-purple-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                            Resumen Total De Tarjetas
-                        </h2>
-                        <p className="text-3xl sm:text-4xl font-extrabold text-purple-400">
-                            $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                    </div>
-
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-5 mb-8 border-t-4 border-red-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
-                            Resumen Mensual de Deudas
-                        </h2>
-                        <p className="text-3xl sm:text-4xl font-extrabold text-red-400">
-                            $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
                     </div>
 
 
