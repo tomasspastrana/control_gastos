@@ -536,7 +536,7 @@ function AuthWrapper() {
 
             {seleccion && (
                 <>
-                    {!esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo !== false && (
+                    {!esVistaDeudas && tarjetaActiva && !tarjetaActiva.nombre.toUpperCase().includes('BBVA') && tarjetaActiva.mostrarSaldo !== false && (
                         <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 border-t-4 border-teal-500">
                             <div className="flex justify-between items-center mb-2">
                                 <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
@@ -564,7 +564,7 @@ function AuthWrapper() {
                         </p>
                     </div>
 
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 mb-8 border-t-4 border-red-500">
+                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-5 mb-8 border-t-4 border-red-500">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
                             Resumen Mensual de Deudas
                         </h2>
@@ -608,8 +608,8 @@ function AuthWrapper() {
                             <button
                                 onClick={() => setVerHistorial(false)}
                                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!verHistorial
-                                        ? 'bg-teal-600 text-white shadow-md'
-                                        : 'text-gray-400 hover:text-white'
+                                    ? 'bg-teal-600 text-white shadow-md'
+                                    : 'text-gray-400 hover:text-white'
                                     }`}
                             >
                                 Pendientes
@@ -617,8 +617,8 @@ function AuthWrapper() {
                             <button
                                 onClick={() => setVerHistorial(true)}
                                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${verHistorial
-                                        ? 'bg-teal-600 text-white shadow-md'
-                                        : 'text-gray-400 hover:text-white'
+                                    ? 'bg-teal-600 text-white shadow-md'
+                                    : 'text-gray-400 hover:text-white'
                                     }`}
                             >
                                 Historial Pagado
