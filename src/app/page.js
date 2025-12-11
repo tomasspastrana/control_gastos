@@ -8,13 +8,13 @@ import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestor
 // --- Configuración de Firebase ---
 // Se restaura el método original de configuración
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 const appIdPath = 'control-de-gastos-app';
@@ -51,6 +51,7 @@ function AuthWrapper() {
     const [cuotasPagadas, setCuotasPagadas] = useState('');
     const [mostrarFormularioTarjeta, setMostrarFormularioTarjeta] = useState(false);
     const [nuevaTarjeta, setNuevaTarjeta] = useState({ nombre: '', limite: '', mostrarSaldo: true });
+    const [verHistorial, setVerHistorial] = useState(false);
 
     // Efecto para inicializar Firebase y autenticar al usuario
     useEffect(() => {
@@ -122,7 +123,7 @@ function AuthWrapper() {
                     const oldData = oldSnapshot.data();
                     const migratedData = {
                         tarjetas: oldData.tarjetas || [],
-                        deudas: [] 
+                        deudas: []
                     };
                     await setDoc(userDocRefGeneral, migratedData); // Guardamos en la nueva ubicación
                     setTarjetas(migratedData.tarjetas);
@@ -194,7 +195,7 @@ function AuthWrapper() {
         setActiveUserId(authUserId);
         setIdParaCargar('');
     };
-    
+
     // --- Lógica de Selección Optimizada ---
     const { esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
         const esDeudas = seleccion === 'Deudas';
@@ -254,7 +255,7 @@ function AuthWrapper() {
                 deudasActualizadas = [...deudas, itemFinal];
             }
             saveToFirebase({ deudas: deudasActualizadas });
-        } else if(tarjetaActiva) {
+        } else if (tarjetaActiva) {
             const tarjetasActualizadas = tarjetas.map(t => {
                 if (t.nombre === seleccion) {
                     let saldoActualizado = t.saldo;
@@ -283,7 +284,7 @@ function AuthWrapper() {
 
 
     const eliminarItem = (itemIndex) => {
-        if(esVistaDeudas) {
+        if (esVistaDeudas) {
             const deudasActualizadas = deudas.filter((_, i) => i !== itemIndex);
             saveToFirebase({ deudas: deudasActualizadas });
         } else if (tarjetaActiva) {
@@ -293,10 +294,11 @@ function AuthWrapper() {
 
             const tarjetasActualizadas = tarjetas.map(t =>
                 t.nombre === seleccion
-                    ? { ...t,
+                    ? {
+                        ...t,
                         saldo: t.saldo + montoADevolver,
                         compras: t.compras.filter((_, i) => i !== itemIndex)
-                      }
+                    }
                     : t
             );
             saveToFirebase({ tarjetas: tarjetasActualizadas });
@@ -316,26 +318,26 @@ function AuthWrapper() {
         setPostergada(itemAEditar.postergada || false);
         const pagadas = itemAEditar.cuotas - itemAEditar.cuotasRestantes;
         setCuotasPagadas(pagadas > 0 ? String(pagadas) : '');
-         window.scrollTo(0, document.body.scrollHeight / 2);
+        window.scrollTo(0, document.body.scrollHeight / 2);
     };
 
-      const handleRecalcularSaldo = () => {
-      if (!tarjetaActiva) return;
+    const handleRecalcularSaldo = () => {
+        if (!tarjetaActiva) return;
 
-      // Calcula la deuda total pendiente sumando el valor de las cuotas restantes de cada compra.
-      const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
-          const deudaDeEstaCompra = compra.montoCuota * compra.cuotasRestantes;
-          return total + deudaDeEstaCompra;
-      }, 0);
+        // Calcula la deuda total pendiente sumando el valor de las cuotas restantes de cada compra.
+        const totalDeudaPendiente = tarjetaActiva.compras.reduce((total, compra) => {
+            const deudaDeEstaCompra = compra.montoCuota * compra.cuotasRestantes;
+            return total + deudaDeEstaCompra;
+        }, 0);
 
-      // El saldo correcto es el límite menos la deuda que aún falta pagar.
-      const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
+        // El saldo correcto es el límite menos la deuda que aún falta pagar.
+        const saldoCorrecto = tarjetaActiva.limite - totalDeudaPendiente;
 
-      const tarjetasActualizadas = tarjetas.map(t =>
-          t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
-      );
-      saveToFirebase({ tarjetas: tarjetasActualizadas });
-  };
+        const tarjetasActualizadas = tarjetas.map(t =>
+            t.nombre === seleccion ? { ...t, saldo: saldoCorrecto } : t
+        );
+        saveToFirebase({ tarjetas: tarjetasActualizadas });
+    };
 
     const resumenGastos = itemsActivos.reduce((resumen, item) => {
         resumen[item.categoria] = (resumen[item.categoria] || 0) + item.montoTotal;
@@ -370,7 +372,7 @@ function AuthWrapper() {
 
     const handlePagarResumen = () => {
         if (resumenMes <= 0) return;
-        
+
         const procesarItems = (items) => {
             return items.map(item => {
                 let updatedItem = { ...item };
@@ -386,7 +388,7 @@ function AuthWrapper() {
             });
         };
 
-        if(esVistaDeudas) {
+        if (esVistaDeudas) {
             const deudasActualizadas = procesarItems(deudas);
             saveToFirebase({ deudas: deudasActualizadas });
         } else if (tarjetaActiva) {
@@ -413,7 +415,7 @@ function AuthWrapper() {
             }
             return c;
         };
-        
+
         if (esVistaDeudas) {
             const deudasActualizadas = deudas.map(actualizarItem);
             saveToFirebase({ deudas: deudasActualizadas });
@@ -429,7 +431,7 @@ function AuthWrapper() {
             saveToFirebase({ tarjetas: tarjetasActualizadas });
         }
     };
-    
+
     const resumenTotalGeneral = useMemo(() => {
         const calcularTotalMes = (items) => items.reduce((total, item) => {
             if (item.cuotasRestantes > 0 && !item.postergada) {
@@ -439,8 +441,8 @@ function AuthWrapper() {
         }, 0);
 
         const totalTarjetas = tarjetas.reduce((total, tarjeta) => total + calcularTotalMes(tarjeta.compras), 0);
-        
-        
+
+
         return totalTarjetas;
     }, [tarjetas]);
 
@@ -464,6 +466,14 @@ function AuthWrapper() {
             </main>
         );
     }
+
+    const itemsVisualizados = useMemo(() => {
+        if (!itemsActivos) return [];
+        return itemsActivos.filter(item => {
+            if (verHistorial) return item.pagada;
+            return !item.pagada;
+        });
+    }, [itemsActivos, verHistorial]);
 
     return (
         <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12 lg:p-24 bg-gray-900 text-white font-sans">
@@ -532,7 +542,7 @@ function AuthWrapper() {
                         <h3 className="text-lg font-semibold text-gray-300">Nueva Tarjeta</h3>
                         <input type="text" placeholder="Nombre de la tarjeta" value={nuevaTarjeta.nombre} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, nombre: e.target.value })} className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500" required />
                         <input type="number" placeholder="Límite de la tarjeta" value={nuevaTarjeta.limite} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, limite: e.target.value })} className="p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:ring-green-500" required />
-                         <div className="flex items-center gap-2 text-gray-300 mt-2">
+                        <div className="flex items-center gap-2 text-gray-300 mt-2">
                             <input type="checkbox" id="mostrar-saldo-checkbox" checked={nuevaTarjeta.mostrarSaldo} onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, mostrarSaldo: e.target.checked })} />
                             <label htmlFor="mostrar-saldo-checkbox">Mostrar saldo por defecto</label>
                         </div>
@@ -573,8 +583,8 @@ function AuthWrapper() {
                             $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
-                    
-                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-red-500">
+
+                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 mb-8 border-t-4 border-red-500">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-2 text-gray-300">
                             Resumen Mensual de Deudas
                         </h2>
@@ -582,7 +592,7 @@ function AuthWrapper() {
                             $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
-                    
+
 
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                         <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
@@ -605,35 +615,83 @@ function AuthWrapper() {
                             </button>
                         </form>
                     </div>
-                    
+
                     <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mt-8 border-t-4 border-teal-500">
-                        <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">Listado de {seleccion}</h2>
-                        {itemsActivos.length > 0 ? (
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl sm:text-2xl font-semibold text-gray-300">
+                                {verHistorial ? `Historial (${seleccion})` : `Pendientes (${seleccion})`}
+                            </h2>
+                        </div>
+
+                        {/* BOTONES DE PESTAÑAS */}
+                        <div className="flex bg-gray-700 p-1 rounded-xl mb-6">
+                            <button
+                                onClick={() => setVerHistorial(false)}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!verHistorial
+                                        ? 'bg-teal-600 text-white shadow-md'
+                                        : 'text-gray-400 hover:text-white'
+                                    }`}
+                            >
+                                Pendientes
+                            </button>
+                            <button
+                                onClick={() => setVerHistorial(true)}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${verHistorial
+                                        ? 'bg-teal-600 text-white shadow-md'
+                                        : 'text-gray-400 hover:text-white'
+                                    }`}
+                            >
+                                Historial Pagado
+                            </button>
+                        </div>
+
+                        {/* LISTA DE ITEMS (Usando itemsVisualizados) */}
+                        {itemsVisualizados.length > 0 ? (
                             <ul className="space-y-4">
-                                {itemsActivos.map((item, index) => (
-                                    <li key={index} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3">
-                                        <div className={item.pagada ? 'opacity-50' : ''}>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="font-bold text-lg">{item.descripcion}</p>
-                                                {item.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
-                                                {item.postergada && <span className="text-xs font-bold text-black bg-yellow-400 px-2 py-1 rounded-full">POSTERGADA</span>}
+                                {itemsVisualizados.map((item, index) => {
+                                    // Truco: Necesitamos encontrar el índice real en la lista original para editar/borrar
+                                    // porque 'index' aquí es solo del filtrado.
+                                    const realIndex = itemsActivos.indexOf(item);
+
+                                    return (
+                                        <li key={index} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3 ${verHistorial ? 'opacity-75' : ''}`}>
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="font-bold text-lg">{item.descripcion}</p>
+                                                    {item.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
+                                                    {item.postergada && <span className="text-xs font-bold text-black bg-yellow-400 px-2 py-1 rounded-full">POSTERGADA</span>}
+                                                </div>
+                                                <p className="text-sm text-gray-400">{item.categoria}</p>
+                                                <p className="text-base text-gray-200">Total: $ {item.montoTotal.toLocaleString('es-AR')} ({item.cuotas} cuotas)</p>
+                                                {/* Solo mostramos valor cuota si no está pagada del todo, o si queremos referencia */}
+                                                <p className="text-base text-cyan-400">Valor cuota: $ {item.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                                <p className="text-sm text-gray-400 italic mt-1">Cuotas restantes: {item.cuotasRestantes}</p>
                                             </div>
-                                            <p className="text-sm text-gray-400">{item.categoria}</p>
-                                            <p className="text-base text-gray-200">Total: $ {item.montoTotal.toLocaleString('es-AR')} ({item.cuotas} cuotas)</p>
-                                            <p className="text-base text-cyan-400">Valor cuota: $ {item.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                            <p className="text-sm text-gray-400 italic mt-1">Cuotas restantes: {item.cuotasRestantes}</p>
-                                        </div>
-                                        <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
-                                            {item.cuotasRestantes > 0 && (
-                                                <button onClick={() => handlePagarCuota(index)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
-                                            )}
-                                            <button onClick={() => iniciarEdicion(index)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={item.pagada}>Editar</button>
-                                            <button onClick={() => eliminarItem(index)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
-                                        </div>
-                                    </li>
-                                ))}
+                                            <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
+                                                {/* Solo mostramos PAGAR si NO estamos en el historial */}
+                                                {!verHistorial && item.cuotasRestantes > 0 && (
+                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600 p-2 rounded-xl hover:bg-green-700 text-sm transition font-medium">Pagar Cuota</button>
+                                                )}
+
+                                                {/* Editar y Eliminar siempre disponibles, pero usamos realIndex */}
+                                                <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500 p-2 rounded-xl hover:bg-yellow-600 text-sm transition font-medium disabled:opacity-50" disabled={item.pagada && !verHistorial}>
+                                                    {verHistorial ? 'Ver/Editar' : 'Editar'}
+                                                </button>
+                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600 p-2 rounded-xl hover:bg-red-700 text-sm transition font-medium">Eliminar</button>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
                             </ul>
-                        ) : (<p className="text-gray-400 text-sm italic">No hay items registrados.</p>)}
+                        ) : (
+                            <div className="text-center py-8">
+                                <p className="text-gray-500 text-lg italic">
+                                    {verHistorial
+                                        ? "No tienes compras pagadas en el historial."
+                                        : "¡Todo limpio! No hay deudas pendientes."}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </>
             )}
