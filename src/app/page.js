@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 // --- Configuración de Firebase ---
 const firebaseConfig = {
@@ -260,6 +260,47 @@ function AuthWrapper() {
             name: key,
             value: agrupado[key]
         })).filter(d => d.value > 0); // Eliminamos categorías con 0
+    }, [itemsVisualizados]);
+
+    const datosProyeccion = useMemo(() => {
+        if (!itemsVisualizados || itemsVisualizados.length === 0) return [];
+
+        // Creamos un mapa para los próximos 12 meses
+        const meses = {};
+        for (let i = 1; i <= 12; i++) {
+            meses[`Mes ${i}`] = 0;
+        }
+
+        // Recorremos cada compra y sumamos su cuota a los meses correspondientes
+        itemsVisualizados.forEach(item => {
+            if (!item.pagada && item.cuotasRestantes > 0) {
+                // Si la compra está postergada, empezamos a contar desde el mes 2
+                const inicio = item.postergada ? 1 : 0;
+
+                for (let i = 0; i < item.cuotasRestantes; i++) {
+                    const numeroMes = inicio + i + 1; // +1 porque mostramos "Mes 1", "Mes 2"...
+                    if (numeroMes <= 12) {
+                        meses[`Mes ${numeroMes}`] += item.montoCuota;
+                    }
+                }
+            }
+        });
+
+        // Convertimos a array para el gráfico y filtramos los meses que tengan deuda 0 al final (opcional)
+        // O mejor, cortamos en el último mes que tenga deuda para no mostrar 12 barras vacías
+        let data = Object.keys(meses).map(key => ({
+            name: key,
+            total: meses[key]
+        }));
+
+        // Encontramos el último mes con monto > 0 para cortar el gráfico ahí
+        let ultimoMesConDatos = 0;
+        data.forEach((d, index) => {
+            if (d.total > 0) ultimoMesConDatos = index;
+        });
+
+        // Retornamos solo hasta donde hay datos (mínimo mostramos 3 meses para que se vea bonito)
+        return data.slice(0, Math.max(3, ultimoMesConDatos + 1));
     }, [itemsVisualizados]);
 
 
@@ -606,22 +647,23 @@ function AuthWrapper() {
                         </div>
 
                         {/* COLUMNA DERECHA: GRÁFICO (Se mostrará a la derecha en PC) */}
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-6">
+
+                            {/* 1. GRÁFICO DE TORTA (CATEGORÍAS) */}
                             {datosGrafico.length > 0 ? (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-full border-t-4 border-yellow-500 flex flex-col justify-center">
-                                    <h2 className="text-xl sm:text-2xl font-semibold mb-6 text-gray-300 text-center">
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-yellow-500 flex flex-col justify-center">
+                                    <h2 className="text-xl font-semibold mb-2 text-gray-300 text-center">
                                         Distribución por Categoría
                                     </h2>
-                                    {/* Aumentamos la altura del gráfico para aprovechar el espacio lateral */}
-                                    <div className="h-80 w-full">
+                                    <div className="h-full w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie
                                                     data={datosGrafico}
                                                     cx="50%"
                                                     cy="50%"
-                                                    innerRadius={80} // Un poco más grueso
-                                                    outerRadius={110} // Un poco más grande
+                                                    innerRadius={60}
+                                                    outerRadius={90}
                                                     paddingAngle={5}
                                                     dataKey="value"
                                                 >
@@ -631,7 +673,8 @@ function AuthWrapper() {
                                                 </Pie>
                                                 <Tooltip
                                                     formatter={(value) => `$${value.toLocaleString('es-AR')}`}
-                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
+                                                    itemStyle={{ color: '#fff' }}
                                                 />
                                                 <Legend iconType="circle" verticalAlign="bottom" height={36} />
                                             </PieChart>
@@ -639,12 +682,54 @@ function AuthWrapper() {
                                     </div>
                                 </div>
                             ) : (
-                                // Placeholder si no hay datos para el gráfico, para que no quede el hueco vacío
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-full border-t-4 border-gray-600 flex items-center justify-center opacity-50">
-                                    <p className="text-gray-400 text-lg">Añade gastos para ver el análisis gráfico</p>
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-gray-600 flex items-center justify-center opacity-50">
+                                    <p className="text-gray-400 text-lg">Añade gastos para ver el análisis</p>
+                                </div>
+                            )}
+
+                            {/* 2. GRÁFICO DE BARRAS (PROYECCIÓN) - NUEVO */}
+                            {datosProyeccion.length > 0 && (
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-cyan-500 flex flex-col justify-center">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-300 text-center">
+                                        Proyección de Pagos Futuros
+                                    </h2>
+                                    <div className="h-full w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={datosProyeccion}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                                                <XAxis
+                                                    dataKey="name"
+                                                    stroke="#9ca3af"
+                                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <YAxis
+                                                    stroke="#9ca3af"
+                                                    tick={{ fill: '#9ca3af', fontSize: 10 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    tickFormatter={(value) => `$${value / 1000}k`} // Abreviar números grandes
+                                                />
+                                                <Tooltip
+                                                    cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                                    formatter={(value) => [`$${value.toLocaleString('es-AR')}`, 'A pagar']}
+                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
+                                                    itemStyle={{ color: '#4ade80' }} // Texto verde
+                                                />
+                                                <Bar
+                                                    dataKey="total"
+                                                    fill="#06b6d4"
+                                                    radius={[4, 4, 0, 0]} // Bordes redondeados arriba
+                                                    barSize={30}
+                                                />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
                                 </div>
                             )}
                         </div>
+
 
                     </div>
 
