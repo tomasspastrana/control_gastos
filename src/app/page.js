@@ -55,6 +55,13 @@ function AuthWrapper() {
     const [nuevaTarjeta, setNuevaTarjeta] = useState({ nombre: '', limite: '', mostrarSaldo: true });
     const [verHistorial, setVerHistorial] = useState(false);
 
+    //Estados de modo argentina
+    const [calcPrecioContado, setCalcPrecioContado] = useState('');
+    const [calcMontoCuota, setCalcMontoCuota] = useState('');
+    const [calcCantCuotas, setCalcCantCuotas] = useState('');
+    const [calcInflacion, setCalcInflacion] = useState('4'); // Inflación mensual estimada por defecto
+    const [resultadoCalc, setResultadoCalc] = useState(null);
+
     // 2. HOOKS DE EFECTO (useEffect)
     useEffect(() => {
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
@@ -336,6 +343,54 @@ function AuthWrapper() {
         setMostrarFormularioTarjeta(false);
         setNuevaTarjeta({ nombre: '', limite: '', mostrarSaldo: true });
     }
+
+    //Función para calcular la inflación
+    const calcularInflacion = (e) => {
+        e.preventDefault(); // Evitamos que recargue la página si está en un form
+        const pContado = parseFloat(calcPrecioContado);
+        const pCuota = parseFloat(calcMontoCuota);
+        const cuotas = parseInt(calcCantCuotas);
+        const inf = parseFloat(calcInflacion) / 100;
+
+        if (!pContado || !pCuota || !cuotas) return;
+
+        // Fórmula de Valor Presente de una anualidad (suma de cuotas descontadas)
+        let valorPresenteTotal = 0;
+        for (let i = 1; i <= cuotas; i++) {
+            // Traemos cada cuota al valor de hoy dividiendo por (1 + inflación)^mes
+            valorPresenteTotal += pCuota / Math.pow(1 + inf, i);
+        }
+
+        const diferencia = pContado - valorPresenteTotal;
+        const convieneCuotas = diferencia > 0;
+
+        setResultadoCalc({
+            valorPresente: valorPresenteTotal,
+            diferencia: Math.abs(diferencia),
+            conviene: convieneCuotas ? 'CUOTAS' : 'CONTADO',
+            porcentajeAhorro: (Math.abs(diferencia) / pContado) * 100
+        });
+    };
+
+    const obtenerInflacionOficial = async () => {
+        try {
+            // Usamos la API de ArgentinaDatos que devuelve la inflación mensual histórica
+            const response = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion');
+            if (!response.ok) throw new Error('Error en API');
+
+            const data = await response.json();
+
+            // La API devuelve un array, tomamos el último dato (el más reciente)
+            if (data && data.length > 0) {
+                const ultimoDato = data[data.length - 1];
+                setCalcInflacion(ultimoDato.valor.toString());
+                alert(`¡Dato actualizado! Última inflación oficial: ${ultimoDato.valor}% (${ultimoDato.fecha})`);
+            }
+        } catch (error) {
+            console.error("Error al obtener inflación:", error);
+            alert("No se pudo obtener el dato oficial automáticamente. Por favor, ingrésalo manualmente.");
+        }
+    };
 
     const guardarItem = (e) => {
         e.preventDefault();
@@ -662,6 +717,69 @@ function AuthWrapper() {
                                     $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </p>
                             </div>
+
+                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-sky-400">
+                                <h2 className="text-xl font-semibold mb-4 text-gray-300 flex items-center gap-2">
+                                    🇦🇷 Modo Argentina <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">BETA</span>
+                                </h2>
+                                <div className="flex flex-col gap-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs text-gray-400">Precio Contado</label>
+                                            <input type="number" value={calcPrecioContado} onChange={(e) => setCalcPrecioContado(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$ 100.000" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-400 flex justify-between items-center">
+                                                Inflación Mensual %
+                                                <button
+                                                    onClick={obtenerInflacionOficial}
+                                                    className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer"
+                                                    title="Traer último dato oficial del INDEC"
+                                                >
+                                                    Traer Oficial
+                                                </button>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    value={calcInflacion}
+                                                    onChange={(e) => setCalcInflacion(e.target.value)}
+                                                    className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500"
+                                                    placeholder="4"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs text-gray-400">Valor de Cuota</label>
+                                            <input type="number" value={calcMontoCuota} onChange={(e) => setCalcMontoCuota(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$ 12.000" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-400">Cant. Cuotas</label>
+                                            <input type="number" value={calcCantCuotas} onChange={(e) => setCalcCantCuotas(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="12" />
+                                        </div>
+                                    </div>
+
+                                    <button onClick={calcularInflacion} className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 rounded transition mt-1">
+                                        Calcular Conveniencia
+                                    </button>
+
+                                    {resultadoCalc && (
+                                        <div className={`mt-3 p-3 rounded-lg border ${resultadoCalc.conviene === 'CUOTAS' ? 'bg-green-900/30 border-green-500' : 'bg-red-900/30 border-red-500'}`}>
+                                            <p className="text-sm text-gray-300 mb-1">Te conviene pagar en:</p>
+                                            <p className={`text-2xl font-black ${resultadoCalc.conviene === 'CUOTAS' ? 'text-green-400' : 'text-red-400'}`}>
+                                                {resultadoCalc.conviene}
+                                            </p>
+                                            <div className="mt-2 text-xs text-gray-400">
+                                                <p>Costo real (hoy): <span className="text-white font-bold">$ {resultadoCalc.valorPresente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></p>
+                                                <p>Ahorro real estimado: <span className="text-green-300 font-bold">$ {resultadoCalc.diferencia.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ({resultadoCalc.porcentajeAhorro.toFixed(1)}%)</span></p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                         </div>
 
                         {/* COLUMNA DERECHA: GRÁFICO (Se mostrará a la derecha en PC) */}
