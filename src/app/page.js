@@ -37,7 +37,7 @@ function AuthWrapper() {
     // 1. HOOKS DE ESTADO (useState)
     const [tarjetas, setTarjetas] = useState([]);
     const [deudas, setDeudas] = useState([]);
-    const [seleccion, setSeleccion] = useState(null);
+    const [seleccion, setSeleccion] = useState('General');
     const [nuevoItem, setNuevoItem] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     const [itemEnEdicion, setItemEnEdicion] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -112,7 +112,7 @@ function AuthWrapper() {
                 const data = generalSnapshot.data();
                 setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
-                setSeleccion(data.tarjetas?.[0]?.nombre || "Deudas");
+                setSeleccion("General");
             } else {
                 const oldSnapshot = await getDoc(userDocRefOld);
                 if (oldSnapshot.exists()) {
@@ -125,13 +125,13 @@ function AuthWrapper() {
                     await setDoc(userDocRefGeneral, migratedData);
                     setTarjetas(migratedData.tarjetas);
                     setDeudas(migratedData.deudas);
-                    setSeleccion(migratedData.tarjetas?.[0]?.nombre || "Deudas");
+                    setSeleccion("General");
                 } else {
                     if (activeUserId === authUserId) {
                         await setDoc(userDocRefGeneral, datosIniciales);
                         setTarjetas(datosIniciales.tarjetas);
                         setDeudas(datosIniciales.deudas);
-                        setSeleccion(datosIniciales.tarjetas?.[0]?.nombre || "Deudas");
+                        setSeleccion("General");
                     } else {
                         setTarjetas([]);
                         setDeudas([]);
