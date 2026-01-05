@@ -23,12 +23,9 @@ const LOCAL_STORAGE_KEY = 'activeUserId';
 
 // --- Datos y Categorías Iniciales ---
 const datosIniciales = {
-    tarjetas: [
-        { nombre: 'Ualá', limite: 700000, saldo: 700000, compras: [], mostrarSaldo: true },
-        { nombre: 'BBVA NOE', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: false },
-        { nombre: 'BBVA TOMAS', limite: 290000, saldo: 290000, compras: [], mostrarSaldo: false },
-    ],
-    deudas: []
+    tarjetas: [],
+    deudas: [],
+    gastosDiarios: []
 };
 
 const categoriasDisponibles = ['Préstamo', 'Servicios', 'Alimentos', 'Transporte', 'Entretenimiento', 'Indumentaria', 'Salud', 'Educación', 'Mascotas', 'Otros', 'Transferencia', 'Electrodomésticos', 'Herramientas'];
@@ -37,6 +34,7 @@ function AuthWrapper() {
     // 1. HOOKS DE ESTADO (useState)
     const [tarjetas, setTarjetas] = useState([]);
     const [deudas, setDeudas] = useState([]);
+    const [gastosDiarios, setGastosDiarios] = useState([]);
     const [seleccion, setSeleccion] = useState('General');
     const [nuevoItem, setNuevoItem] = useState({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
     const [itemEnEdicion, setItemEnEdicion] = useState(null);
@@ -119,6 +117,7 @@ function AuthWrapper() {
                 const data = generalSnapshot.data();
                 setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
+                setGastosDiarios(data.gastosDiarios || []);
                 setSeleccion("General");
             } else {
                 const oldSnapshot = await getDoc(userDocRefOld);
@@ -127,21 +126,25 @@ function AuthWrapper() {
                     const oldData = oldSnapshot.data();
                     const migratedData = {
                         tarjetas: oldData.tarjetas || [],
-                        deudas: []
+                        deudas: [],
+                        gastosDiarios: []
                     };
                     await setDoc(userDocRefGeneral, migratedData);
                     setTarjetas(migratedData.tarjetas);
                     setDeudas(migratedData.deudas);
+                    setGastosDiarios(migratedData.gastosDiarios || []);
                     setSeleccion("General");
                 } else {
                     if (activeUserId === authUserId) {
                         await setDoc(userDocRefGeneral, datosIniciales);
                         setTarjetas(datosIniciales.tarjetas);
                         setDeudas(datosIniciales.deudas);
+                        setGastosDiarios(datosIniciales.gastosDiarios || []);
                         setSeleccion("General");
                     } else {
                         setTarjetas([]);
                         setDeudas([]);
+                        setGastosDiarios([]);
                         setSeleccion(null);
                     }
                 }
@@ -153,6 +156,7 @@ function AuthWrapper() {
                     const data = snapshot.data();
                     setTarjetas(data.tarjetas || []);
                     setDeudas(data.deudas || []);
+                    setGastosDiarios(data.gastosDiarios || []);
                 }
             });
 
@@ -176,7 +180,7 @@ function AuthWrapper() {
         if (activeUserId && db) {
             const userDocRef = doc(db, `artifacts/${appIdPath}/users/${activeUserId}/data/general`);
             try {
-                await setDoc(userDocRef, { tarjetas, deudas, ...data }, { merge: true });
+                await setDoc(userDocRef, { tarjetas, deudas, gastosDiarios, ...data }, { merge: true });
             } catch (e) { console.error("Error al guardar en Firebase: ", e); }
         }
     };
@@ -196,9 +200,10 @@ function AuthWrapper() {
     };
 
     // 4. HOOKS DE MEMORIZACIÓN (useMemo) - Deben ir ANTES de cualquier return
-    const { esVistaGeneral, esVistaDeudas, tarjetaActiva, itemsActivos } = useMemo(() => {
+    const { esVistaGeneral, esVistaDeudas, esVistaGastosDiarios, tarjetaActiva, itemsActivos } = useMemo(() => {
         const esGeneral = seleccion === 'General';
         const esDeudas = seleccion === 'Deudas';
+        const esGastosDiarios = seleccion === 'Gastos Diarios';
 
         let items = [];
         let tarjeta = null;
@@ -216,10 +221,11 @@ function AuthWrapper() {
         return {
             esVistaGeneral: esGeneral, // Nueva bandera
             esVistaDeudas: esDeudas,
+            esVistaGastosDiarios: esGastosDiarios,
             tarjetaActiva: tarjeta,
             itemsActivos: items
         };
-    }, [seleccion, tarjetas, deudas]);
+    }, [seleccion, tarjetas, deudas, gastosDiarios]);
 
     const resumenMes = useMemo(() => {
         if (!itemsActivos) return 0;
@@ -325,6 +331,66 @@ function AuthWrapper() {
     }, [itemsVisualizados]);
 
 
+    // 1. GRÁFICO MENSUAL (Día 1 al día actual)
+    const datosGastosMes = useMemo(() => {
+        if (!esVistaGastosDiarios) return [];
+
+        const hoy = new Date();
+        const mesActual = hoy.getMonth(); // 0 = Enero, 1 = Febrero...
+        const anioActual = hoy.getFullYear();
+        const diaActual = hoy.getDate(); // ej: 14
+
+        // Creamos un array con todos los días del mes HASTA HOY
+        // (Si prefieres ver el mes completo vacío a futuro, cambia 'diaActual' por la cantidad de días del mes)
+        const datosDelMes = [];
+
+        for (let i = 1; i <= diaActual; i++) {
+            datosDelMes.push({
+                dia: i,
+                label: `${i}`, // Etiqueta eje X
+                monto: 0
+            });
+        }
+
+        // Rellenamos con los gastos
+        gastosDiarios.forEach(g => {
+            if (!g.fecha) return;
+            const [y, m, d] = g.fecha.split('-').map(Number); // "2024-01-14" -> 2024, 1, 14
+
+            // Chequeamos si el gasto es de este año y este mes (m-1 porque en JS los meses son 0-11)
+            if (y === anioActual && (m - 1) === mesActual) {
+                // Buscamos el día en nuestro array (index = dia - 1)
+                if (d <= diaActual) {
+                    datosDelMes[d - 1].monto += g.montoTotal;
+                }
+            }
+        });
+
+        return datosDelMes;
+    }, [gastosDiarios, esVistaGastosDiarios]);
+
+    // 2. GRÁFICO ANUAL (Enero a Diciembre)
+    const datosGastosAnual = useMemo(() => {
+        if (!esVistaGastosDiarios) return [];
+
+        const anioActual = new Date().getFullYear();
+        const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+        // Inicializamos los 12 meses en 0
+        const datosAnual = mesesNombres.map(mes => ({ name: mes, total: 0 }));
+
+        gastosDiarios.forEach(g => {
+            if (!g.fecha) return;
+            const [y, m, d] = g.fecha.split('-').map(Number);
+
+            if (y === anioActual) {
+                // (m - 1) es el índice del mes (0 para Enero)
+                datosAnual[m - 1].total += g.montoTotal;
+            }
+        });
+
+        return datosAnual;
+    }, [gastosDiarios, esVistaGastosDiarios]);
     // 5. EVENT HANDLERS
     const handleAgregarTarjeta = (e) => {
         e.preventDefault();
@@ -641,6 +707,8 @@ function AuthWrapper() {
                     {tarjetas.map(t => (
                         <option key={t.nombre} value={t.nombre}>{t.nombre}</option>
                     ))}
+                    <option value="Gastos Diarios">Gastos del Día a Día</option>
+
                     <option value="Deudas">Deudas</option>
                 </select>
                 <button
@@ -668,208 +736,339 @@ function AuthWrapper() {
 
             {seleccion && (
                 <>
-                    {/* --- CONTENEDOR PRINCIPAL DE DOS COLUMNAS (GRID) --- */}
-                    <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 mt-4">
 
-                        {/* COLUMNA IZQUIERDA: RESÚMENES */}
-                        <div className="flex flex-col gap-6">
+                    {/* VERIFICAMOS SI HAY DATOS PARA MOSTRAR */}
+                    {(tarjetas.length > 0 || deudas.length > 0) ? (
+                        /* --- CONTENEDOR PRINCIPAL DE DOS COLUMNAS (GRID) --- */
+                        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 mt-4">
 
-                            {/* 1. SALDO (Solo si no es BBVA y no es Deudas) */}
-                            {!esVistaDeudas && tarjetaActiva && !tarjetaActiva.nombre.toUpperCase().includes('BBVA') && tarjetaActiva.mostrarSaldo !== false && (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <h2 className="text-xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
-                                        <button onClick={handleRecalcularSaldo} title="Recalcular saldo" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                            {/* COLUMNA IZQUIERDA: RESÚMENES */}
+                            <div className="flex flex-col gap-6">
+
+                                {/* 1. SALDO (Solo si no es BBVA, no es Deudas y NO es General) */}
+                                {!esVistaGastosDiarios && !esVistaGeneral && !esVistaDeudas && tarjetaActiva && !tarjetaActiva.nombre.toUpperCase().includes('BBVA') && tarjetaActiva.mostrarSaldo !== false && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h2 className="text-xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
+                                            <button onClick={handleRecalcularSaldo} title="Recalcular saldo" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                                        </div>
+                                        <p className="text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
+                                        <p className="text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
                                     </div>
-                                    <p className="text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
-                                    <p className="text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
-                                </div>
-                            )}
+                                )}
 
-                            {/* 2. RESUMEN DEL MES */}
-                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-blue-500">
-                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
-                                    Resumen del Mes ({seleccion})
-                                </h2>
-                                <p className="text-4xl font-extrabold text-blue-400">$ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                <button onClick={handlePagarResumen} disabled={resumenMes <= 0} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed">Pagar Resumen</button>
-                            </div>
+                                {/* 2. RESUMEN DEL MES */}
+                                {!esVistaGastosDiarios && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-blue-500">
+                                        <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                            Resumen del Mes ({seleccion})
+                                        </h2>
+                                        <p className="text-4xl font-extrabold text-blue-400">$ {resumenMes.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        {/* Deshabilitamos el pago si estamos en General */}
+                                        <button onClick={handlePagarResumen} disabled={resumenMes <= 0 || esVistaGeneral} className="w-full mt-4 bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 transition duration-300 ease-in-out shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                            {esVistaGeneral ? "Selecciona una tarjeta para pagar" : "Pagar Resumen"}
+                                        </button>
+                                    </div>
+                                )}
 
-                            {/* 3. RESUMEN TOTAL TARJETAS */}
-                            {!esVistaGeneral && (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-purple-500">
-                                    <h2 className="text-xl font-semibold mb-2 text-gray-300">
-                                        Resumen Total De Tarjetas
+
+                                {/* 3. RESUMEN TOTAL TARJETAS (Solo si no es General, para no repetir) */}
+                                {!esVistaGastosDiarios && !esVistaGeneral && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-purple-500">
+                                        <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                            Resumen Total De Tarjetas
+                                        </h2>
+                                        <p className="text-4xl font-extrabold text-purple-400">
+                                            $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* 4. RESUMEN DEUDAS */}
+                                {!esVistaGastosDiarios && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-red-500">
+                                        <h2 className="text-xl font-semibold mb-2 text-gray-300">
+                                            Resumen Mensual de Deudas
+                                        </h2>
+                                        <p className="text-4xl font-extrabold text-red-400">
+                                            $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                )}
+
+
+                                {/* --- MODO ARGENTINA: CALCULADORA INTELIGENTE --- */}
+                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-sky-400">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-300 flex items-center gap-2">
+                                        🇦🇷 Asesor Financiero IA <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">SMART</span>
                                     </h2>
-                                    <p className="text-4xl font-extrabold text-purple-400">
-                                        $ {resumenTotalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
+                                    <div className="flex flex-col gap-3">
+                                        {/* INPUTS DE PRECIO */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs text-gray-400">Precio Contado (Cash)</label>
+                                                <input type="number" value={calcPrecioContado} onChange={(e) => setCalcPrecioContado(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$ 100.000" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-400 flex justify-between items-center">
+                                                    Inflación Mensual %
+                                                    <button onClick={obtenerInflacionOficial} className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer" title="Traer oficial">Oficial</button>
+                                                </label>
+                                                <input type="number" value={calcInflacion} onChange={(e) => setCalcInflacion(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="4" />
+                                            </div>
+                                        </div>
+
+                                        {/* INPUTS DE FINANCIACIÓN */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs text-gray-400 font-bold text-sky-300">Total Financiado</label>
+                                                <input type="number" value={calcPrecioFinanciado} onChange={(e) => setCalcPrecioFinanciado(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 ring-1 ring-sky-900 focus:ring-sky-500" placeholder="$ 120.000" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-400">Cant. Cuotas</label>
+                                                <input type="number" value={calcCantCuotas} onChange={(e) => setCalcCantCuotas(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="3, 6, 12..." />
+                                            </div>
+                                        </div>
+
+                                        <button onClick={calcularInflacion} className="bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-bold py-2 rounded transition mt-2 shadow-lg">
+                                            Analizar Compra
+                                        </button>
+
+                                        {/* RESULTADOS */}
+                                        {resultadoCalc && (
+                                            <div className={`mt-4 p-4 rounded-xl border-2 ${resultadoCalc.veredicto.includes('CUOTAS') ? 'bg-green-900/20 border-green-500/50' : (resultadoCalc.veredicto === 'IMPOSIBLE' ? 'bg-red-900/20 border-red-600' : 'bg-yellow-900/20 border-yellow-500/50')}`}>
+
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <p className="text-xs text-gray-400 uppercase tracking-wider">Veredicto</p>
+                                                        <p className={`text-2xl font-black ${resultadoCalc.veredicto.includes('CUOTAS') ? 'text-green-400' : (resultadoCalc.veredicto === 'IMPOSIBLE' ? 'text-red-500' : 'text-yellow-400')}`}>
+                                                            {resultadoCalc.veredicto}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-xs text-gray-400">Cuota estimada</p>
+                                                        <p className="text-lg font-bold text-white">$ {resultadoCalc.valorCuotaReal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Datos Matemáticos */}
+                                                <div className="bg-gray-800/50 p-2 rounded mb-2 text-xs flex justify-between">
+                                                    <span>Inflación ganada: <span className={resultadoCalc.diferencia > 0 ? "text-green-400" : "text-red-400"}>$ {Math.abs(resultadoCalc.diferencia).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></span>
+                                                    <span>Costo Real: <span className="text-white">$ {resultadoCalc.valorPresente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></span>
+                                                </div>
+
+                                                {/* Consejos Contextuales (Si hay) */}
+                                                {resultadoCalc.consejos.length > 0 && (
+                                                    <div className="mt-2 border-t border-gray-600 pt-2">
+                                                        <p className="text-xs font-bold text-gray-300 mb-1">Análisis de Contexto:</p>
+                                                        <ul className="list-disc list-inside text-xs space-y-1">
+                                                            {resultadoCalc.consejos.map((c, i) => (
+                                                                <li key={i} className="text-gray-300">{c}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
-
-
-                            {/* 4. RESUMEN DEUDAS */}
-                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-red-500">
-                                <h2 className="text-xl font-semibold mb-2 text-gray-300">
-                                    Resumen Mensual de Deudas
-                                </h2>
-                                <p className="text-4xl font-extrabold text-red-400">
-                                    $ {resumenTotalDeudas.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
                             </div>
 
-                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-sky-400">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-300 flex items-center gap-2">
-                                    🇦🇷 Modo Argentina <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">BETA</span>
-                                </h2>
-                                <div className="flex flex-col gap-3">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-xs text-gray-400">Precio Contado</label>
-                                            <input type="number" value={calcPrecioContado} onChange={(e) => setCalcPrecioContado(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$ 100.000" />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400 flex justify-between items-center">
-                                                Inflación Mensual %
-                                                <button
-                                                    onClick={obtenerInflacionOficial}
-                                                    className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer"
-                                                    title="Traer último dato oficial del INDEC"
-                                                >
-                                                    Traer Oficial
-                                                </button>
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    value={calcInflacion}
-                                                    onChange={(e) => setCalcInflacion(e.target.value)}
-                                                    className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500"
-                                                    placeholder="4"
-                                                />
-                                            </div>
+                            {/* COLUMNA DERECHA: GRÁFICOS */}
+                            <div className="flex flex-col gap-6">
+
+                                {/* 1. GRÁFICO DE TORTA (CATEGORÍAS) */}
+                                {datosGrafico.length > 0 ? (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-yellow-500 flex flex-col justify-center">
+                                        <h2 className="text-xl font-semibold mb-2 text-gray-300 text-center">
+                                            Distribución por Categoría
+                                        </h2>
+                                        <div className="h-full w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={datosGrafico}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={60}
+                                                        outerRadius={90}
+                                                        paddingAngle={5}
+                                                        dataKey="value"
+                                                    >
+                                                        {datosGrafico.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={COLORES_GRAFICO[index % COLORES_GRAFICO.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        formatter={(value) => `$${value.toLocaleString('es-AR')}`}
+                                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
+                                                        itemStyle={{ color: '#fff' }}
+                                                    />
+                                                    <Legend iconType="circle" verticalAlign="bottom" height={36} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-xs text-gray-400">Valor de Cuota</label>
-                                            <input type="number" value={calcMontoCuota} onChange={(e) => setCalcMontoCuota(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$ 12.000" />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400">Cant. Cuotas</label>
-                                            <input type="number" value={calcCantCuotas} onChange={(e) => setCalcCantCuotas(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="12" />
+                                ) : (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-gray-600 flex items-center justify-center opacity-50">
+                                        <p className="text-gray-400 text-lg">Añade gastos para ver el análisis</p>
+                                    </div>
+                                )}
+
+                                {/* 2. GRÁFICO DE BARRAS (PROYECCIÓN) */}
+                                {datosProyeccion.length > 0 && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-cyan-500 flex flex-col justify-center">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-300 text-center">
+                                            Proyección de Pagos Futuros
+                                        </h2>
+                                        <div className="h-full w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={datosProyeccion} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                                                    <XAxis
+                                                        dataKey="name"
+                                                        stroke="#9ca3af"
+                                                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                    />
+                                                    <YAxis
+                                                        stroke="#9ca3af"
+                                                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                        tickFormatter={(value) => `$${value / 1000}k`}
+                                                    />
+                                                    <Tooltip
+                                                        cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                                        formatter={(value) => [`$${value.toLocaleString('es-AR')}`, 'A pagar']}
+                                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
+                                                        itemStyle={{ color: '#22d3ee' }}
+                                                    />
+                                                    <Bar
+                                                        dataKey="total"
+                                                        fill="#06b6d4"
+                                                        radius={[4, 4, 0, 0]}
+                                                        barSize={30}
+                                                        animationDuration={1500}
+                                                    />
+                                                </BarChart>
+                                            </ResponsiveContainer>
                                         </div>
                                     </div>
-
-                                    <button onClick={calcularInflacion} className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 rounded transition mt-1">
-                                        Calcular Conveniencia
-                                    </button>
-
-                                    {resultadoCalc && (
-                                        <div className={`mt-3 p-3 rounded-lg border ${resultadoCalc.conviene === 'CUOTAS' ? 'bg-green-900/30 border-green-500' : 'bg-red-900/30 border-red-500'}`}>
-                                            <p className="text-sm text-gray-300 mb-1">Te conviene pagar en:</p>
-                                            <p className={`text-2xl font-black ${resultadoCalc.conviene === 'CUOTAS' ? 'text-green-400' : 'text-red-400'}`}>
-                                                {resultadoCalc.conviene}
-                                            </p>
-                                            <div className="mt-2 text-xs text-gray-400">
-                                                <p>Costo real (hoy): <span className="text-white font-bold">$ {resultadoCalc.valorPresente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></p>
-                                                <p>Ahorro real estimado: <span className="text-green-300 font-bold">$ {resultadoCalc.diferencia.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ({resultadoCalc.porcentajeAhorro.toFixed(1)}%)</span></p>
-                                            </div>
+                                )}
+                                {/* --- GRÁFICO 1: EVOLUCIÓN DEL MES (DÍA A DÍA) --- */}
+                                {esVistaGastosDiarios && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-emerald-500 flex flex-col justify-center">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-300 text-center">
+                                            Tu Mes al Día (Acumulado)
+                                        </h2>
+                                        <div className="h-full w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={datosGastosMes}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                                                    <XAxis
+                                                        dataKey="label"
+                                                        stroke="#9ca3af"
+                                                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                                        interval={0} // Intentar mostrar todos los días
+                                                    />
+                                                    <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `$${v / 1000}k`} />
+                                                    <Tooltip
+                                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                        formatter={(value) => [`$${value.toLocaleString('es-AR')}`, 'Gastado']}
+                                                        labelFormatter={(label) => `Día ${label}`}
+                                                    />
+                                                    <Bar dataKey="monto" fill="#10b981" radius={[2, 2, 0, 0]} animationDuration={1000} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
+
+                                {/* --- GRÁFICO 2: EVOLUCIÓN ANUAL (MES A MES) --- */}
+                                {esVistaGastosDiarios && (
+                                    <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-blue-500 flex flex-col justify-center mt-6">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-300 text-center">
+                                            Historial Anual {new Date().getFullYear()}
+                                        </h2>
+                                        <div className="h-full w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={datosGastosAnual}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                                                    <XAxis dataKey="name" stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                                                    <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `$${v / 1000}k`} />
+                                                    <Tooltip
+                                                        cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                        formatter={(value) => [`$${value.toLocaleString('es-AR')}`, 'Total Mes']}
+                                                    />
+                                                    <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                         </div>
-
-                        {/* COLUMNA DERECHA: GRÁFICO (Se mostrará a la derecha en PC) */}
-                        <div className="flex flex-col gap-6">
-
-                            {/* 1. GRÁFICO DE TORTA (CATEGORÍAS) */}
-                            {datosGrafico.length > 0 ? (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-yellow-500 flex flex-col justify-center">
-                                    <h2 className="text-xl font-semibold mb-2 text-gray-300 text-center">
-                                        Distribución por Categoría
-                                    </h2>
-                                    <div className="h-full w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={datosGrafico}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={90}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                >
-                                                    {datosGrafico.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORES_GRAFICO[index % COLORES_GRAFICO.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip
-                                                    formatter={(value) => `$${value.toLocaleString('es-AR')}`}
-                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
-                                                    itemStyle={{ color: '#fff' }}
-                                                />
-                                                <Legend iconType="circle" verticalAlign="bottom" height={36} />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-gray-600 flex items-center justify-center opacity-50">
-                                    <p className="text-gray-400 text-lg">Añade gastos para ver el análisis</p>
-                                </div>
-                            )}
-
-                            {/* 2. GRÁFICO DE BARRAS (PROYECCIÓN) - NUEVO */}
-                            {datosProyeccion.length > 0 && (
-                                <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full h-80 border-t-4 border-cyan-500 flex flex-col justify-center">
-                                    <h2 className="text-xl font-semibold mb-4 text-gray-300 text-center">
-                                        Proyección de Pagos Futuros
-                                    </h2>
-                                    <div className="h-full w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={datosProyeccion}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                                                <XAxis
-                                                    dataKey="name"
-                                                    stroke="#9ca3af"
-                                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                                                    axisLine={false}
-                                                    tickLine={false}
-                                                />
-                                                <YAxis
-                                                    stroke="#9ca3af"
-                                                    tick={{ fill: '#9ca3af', fontSize: 10 }}
-                                                    axisLine={false}
-                                                    tickLine={false}
-                                                    tickFormatter={(value) => `$${value / 1000}k`} // Abreviar números grandes
-                                                />
-                                                <Tooltip
-                                                    cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                                                    formatter={(value) => [`$${value.toLocaleString('es-AR')}`, 'A pagar']}
-                                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }}
-                                                    itemStyle={{ color: '#4ade80' }} // Texto verde
-                                                />
-                                                <Bar
-                                                    dataKey="total"
-                                                    fill="#06b6d4"
-                                                    radius={[4, 4, 0, 0]} // Bordes redondeados arriba
-                                                    barSize={30}
-                                                />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            )}
+                        /* --- FIN DEL GRID --- */
+                    ) : (
+                        // --- ESTO SE MUESTRA SI NO HAY TARJETAS (Usuario Nuevo) ---
+                        <div className="w-full max-w-2xl bg-gray-800 p-8 rounded-2xl shadow-xl border-t-4 border-green-500 text-center my-8">
+                            <h2 className="text-3xl font-bold mb-4 text-white">¡Bienvenido! 👋</h2>
+                            <p className="text-gray-300 mb-6 text-lg">
+                                Para comenzar a ordenar tus finanzas, necesitas agregar tu primera tarjeta o cuenta.
+                            </p>
+                            <button
+                                onClick={() => setMostrarFormularioTarjeta(true)}
+                                className="bg-green-600 text-white font-bold py-3 px-8 rounded-full hover:bg-green-700 transition transform hover:scale-105 shadow-lg"
+                            >
+                                + Agregar mi primera tarjeta
+                            </button>
                         </div>
+                    )}
 
+                    {esVistaGastosDiarios && (
+                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8 mt-8 border-t-4 border-emerald-500">
+                            <h2 className="text-xl font-semibold mb-4 text-gray-300">Registrar Gasto Hormiga 🐜</h2>
+                            <form onSubmit={(e) => {
+                                e.preventDefault();
+                                if (!nuevoItem.monto || !nuevoItem.descripcion) return;
 
-                    </div>
+                                const nuevoGasto = {
+                                    descripcion: nuevoItem.descripcion,
+                                    montoTotal: parseFloat(nuevoItem.monto),
+                                    montoCuota: parseFloat(nuevoItem.monto), // En diario, el total es la cuota
+                                    categoria: nuevoItem.categoria,
+                                    fecha: new Date().toISOString().split('T')[0], // Guardamos la fecha de hoy
+                                    cuotas: 1,
+                                    cuotasRestantes: 0,
+                                    pagada: true // Se considera pagado al instante
+                                };
 
-                    {!esVistaGeneral && (
+                                const nuevosGastos = [nuevoGasto, ...gastosDiarios]; // Agregamos al principio
+                                setGastosDiarios(nuevosGastos);
+                                saveToFirebase({ gastosDiarios: nuevosGastos });
+                                setNuevoItem({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
+                            }} className="flex flex-col gap-4">
+
+                                <input type="text" placeholder="¿En qué gastaste?" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500" required />
+
+                                <input type="number" placeholder="Monto ($)" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500" required />
+
+                                <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500">
+                                    {categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                                </select>
+
+                                <button type="submit" className="bg-emerald-600 text-white font-bold p-3 rounded-xl hover:bg-emerald-700 transition shadow-md">
+                                    Registrar Gasto
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
+                    {!esVistaGeneral && !esVistaGastosDiarios && (
                         <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                             <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">
                                 {itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}
