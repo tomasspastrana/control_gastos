@@ -122,7 +122,6 @@ function AuthWrapper() {
             } else {
                 const oldSnapshot = await getDoc(userDocRefOld);
                 if (oldSnapshot.exists()) {
-                    console.log("Migrando datos antiguos...");
                     const oldData = oldSnapshot.data();
                     const migratedData = {
                         tarjetas: oldData.tarjetas || [],
@@ -132,14 +131,14 @@ function AuthWrapper() {
                     await setDoc(userDocRefGeneral, migratedData);
                     setTarjetas(migratedData.tarjetas);
                     setDeudas(migratedData.deudas);
-                    setGastosDiarios(migratedData.gastosDiarios || []);
+                    setGastosDiarios([]);
                     setSeleccion("General");
                 } else {
                     if (activeUserId === authUserId) {
                         await setDoc(userDocRefGeneral, datosIniciales);
                         setTarjetas(datosIniciales.tarjetas);
                         setDeudas(datosIniciales.deudas);
-                        setGastosDiarios(datosIniciales.gastosDiarios || []);
+                        setGastosDiarios([]);
                         setSeleccion("General");
                     } else {
                         setTarjetas([]);
@@ -164,15 +163,9 @@ function AuthWrapper() {
         };
 
         let unsubscribe;
-        loadAndMigrateData().then(unsub => {
-            unsubscribe = unsub;
-        });
+        loadAndMigrateData().then(unsub => unsubscribe = unsub);
+        return () => { if (unsubscribe) unsubscribe(); };
 
-        return () => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
-        };
     }, [db, activeUserId, authUserId]);
 
     // 3. FUNCIONES AUXILIARES (No son hooks)
@@ -211,7 +204,8 @@ function AuthWrapper() {
 
         if (esGeneral) {
             // PROTECCIÓN: (tarjetas || []) evita el error si tarjetas es null
-            items = (tarjetas || []).flatMap(t => t.compras || []);
+            const comprasTarjetas = (tarjetas || []).flatMap(t => t.compras || []);
+            items = [...comprasTarjetas, ...(deudas || [])];
         } else if (esDeudas) {
             items = deudas || []; // Protección aquí también
         } else if (esGastosDiarios) {
@@ -514,6 +508,7 @@ function AuthWrapper() {
     };
 
     const eliminarItem = (itemIndex) => {
+        if (esVistaGeneral) return;
         if (esVistaDeudas) {
             const deudasActualizadas = deudas.filter((_, i) => i !== itemIndex);
             saveToFirebase({ deudas: deudasActualizadas });
@@ -521,21 +516,15 @@ function AuthWrapper() {
             const itemAEliminar = tarjetaActiva.compras[itemIndex];
             if (!itemAEliminar) return;
             const montoADevolver = itemAEliminar.montoTotal;
-
             const tarjetasActualizadas = tarjetas.map(t =>
-                t.nombre === seleccion
-                    ? {
-                        ...t,
-                        saldo: t.saldo + montoADevolver,
-                        compras: t.compras.filter((_, i) => i !== itemIndex)
-                    }
-                    : t
+                t.nombre === seleccion ? { ...t, saldo: t.saldo + montoADevolver, compras: t.compras.filter((_, i) => i !== itemIndex) } : t
             );
             saveToFirebase({ tarjetas: tarjetasActualizadas });
         }
     };
 
     const iniciarEdicion = (itemIndex) => {
+        if (esVistaGeneral) return;
         const itemAEditar = itemsActivos[itemIndex];
         if (!itemAEditar) return;
         setNuevoItem({
@@ -615,26 +604,22 @@ function AuthWrapper() {
     };
 
     const handlePagarCuota = (itemIndex) => {
+        if (esVistaGeneral) return;
         const item = itemsActivos[itemIndex];
         if (!item || item.cuotasRestantes <= 0) return;
-
         const actualizarItem = (c, i) => {
             if (i === itemIndex) {
-                const nuevasCuotasRestantes = c.cuotasRestantes - 1;
-                return { ...c, cuotasRestantes: nuevasCuotasRestantes, pagada: nuevasCuotasRestantes === 0 };
+                const nr = c.cuotasRestantes - 1;
+                return { ...c, cuotasRestantes: nr, pagada: nr === 0 };
             }
             return c;
         };
-
         if (esVistaDeudas) {
-            const deudasActualizadas = deudas.map(actualizarItem);
-            saveToFirebase({ deudas: deudasActualizadas });
+            saveToFirebase({ deudas: deudas.map(actualizarItem) });
         } else if (tarjetaActiva) {
             const tarjetasActualizadas = tarjetas.map(t => {
                 if (t.nombre === seleccion) {
-                    const nuevoSaldo = Math.min(t.limite, t.saldo + item.montoCuota);
-                    const comprasActualizadas = t.compras.map(actualizarItem);
-                    return { ...t, saldo: nuevoSaldo, compras: comprasActualizadas };
+                    return { ...t, saldo: Math.min(t.limite, t.saldo + item.montoCuota), compras: t.compras.map(actualizarItem) };
                 }
                 return t;
             });
