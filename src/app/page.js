@@ -599,12 +599,25 @@ function AuthWrapper() {
                     <option value="Deudas">Deudas</option>
                 </select>
                 {!esVistaGeneral && !esVistaGastosDiarios && (
-                    <button
-                        onClick={() => setMostrarFormularioTarjeta(true)}
-                        className="w-full mt-4 bg-green-600 text-white font-bold p-3 rounded-xl hover:bg-green-700 transition"
-                    >
-                        + Añadir Nueva Tarjeta
-                    </button>
+                    <>
+                        <button
+                            onClick={() => setMostrarFormularioTarjeta(true)}
+                            className="w-full mt-4 bg-green-600 text-white font-bold p-3 rounded-xl hover:bg-green-700 transition"
+                        >
+                            + Añadir Nueva Tarjeta
+                        </button>
+                        {tarjetaActiva && (
+                            <button
+                                onClick={handleEliminarTarjeta}
+                                className="w-full mt-4 bg-red-600 text-white font-bold p-3 rounded-xl hover:bg-red-700 transition"
+                            >
+                                🗑️ Eliminar {tarjetaActiva.nombre}
+                            </button>
+                        )}
+                    </>
+
+
+
                 )}
 
                 {mostrarFormularioTarjeta && (
@@ -642,13 +655,6 @@ function AuthWrapper() {
                                             className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition"
                                         >
                                             Recalcular
-                                        </button>
-                                        <button
-                                            onClick={handleEliminarTarjeta}
-                                            title="Eliminar esta tarjeta"
-                                            className="bg-red-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-red-700 transition flex items-center gap-1"
-                                        >
-                                            🗑️ Eliminar
                                         </button>
                                     </div>
                                 </div>
@@ -786,13 +792,16 @@ function AuthWrapper() {
                     </div>
                 </div>
             ) : (
-                <div className="w-full max-w-2xl bg-gray-800 p-8 rounded-2xl shadow-xl border-t-4 border-green-500 text-center my-8">
-                    <h2 className="text-3xl font-bold mb-4 text-white">¡Bienvenido! 👋</h2>
-                    <p className="text-gray-300 mb-6 text-lg">Para comenzar a ordenar tus finanzas, necesitas agregar tu primera tarjeta o cuenta.</p>
-                    <button onClick={() => setMostrarFormularioTarjeta(true)} className="bg-green-600 text-white font-bold py-3 px-8 rounded-full hover:bg-green-700 transition transform hover:scale-105 shadow-lg">
-                        + Agregar mi primera tarjeta
-                    </button>
-                </div>
+                !esVistaGastosDiarios && (
+                    <div className="w-full max-w-2xl bg-gray-800 p-8 rounded-2xl shadow-xl border-t-4 border-green-500 text-center my-8">
+                        <h2 className="text-3xl font-bold mb-4 text-white">¡Bienvenido! 👋</h2>
+                        <p className="text-gray-300 mb-6 text-lg">Para comenzar a ordenar tus finanzas, necesitas agregar tu primera tarjeta o cuenta.</p>
+                        <button onClick={() => setMostrarFormularioTarjeta(true)} className="bg-green-600 text-white font-bold py-3 px-8 rounded-full hover:bg-green-700 transition transform hover:scale-105 shadow-lg">
+                            + Agregar mi primera tarjeta
+                        </button>
+                    </div>
+                )
+
             )}
 
             {/* FORMULARIOS REGISTRO */}
