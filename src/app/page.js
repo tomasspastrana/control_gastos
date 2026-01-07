@@ -62,6 +62,11 @@ function AuthWrapper() {
     const [calcInflacion, setCalcInflacion] = useState('4');
     const [resultadoCalc, setResultadoCalc] = useState(null);
 
+    // ESTADOS DE PERFIL FINANCIERO
+    const [perfilFinanciero, setPerfilFinanciero] = useState({ sueldo: '', gastosFijos: '', fondoEmergencia: '' });
+    const [mostrarConfigPerfil, setMostrarConfigPerfil] = useState(false);
+
+
     // 2. CONEXIÓN Y CARGA (Lógica Robusta de Page2)
     useEffect(() => {
         if (!firebaseConfig.apiKey) {
@@ -115,6 +120,7 @@ function AuthWrapper() {
                 setTarjetas(data.tarjetas || []);
                 setDeudas(data.deudas || []);
                 setGastosDiarios(data.gastosDiarios || []);
+                setPerfilFinanciero(data.perfilFinanciero || { sueldo: '', gastosFijos: '', fondoEmergencia: '' });
                 setSeleccion("General");
             } else {
                 // Intento de migración de datos viejos
@@ -149,6 +155,7 @@ function AuthWrapper() {
                     setTarjetas(data.tarjetas || []);
                     setDeudas(data.deudas || []);
                     setGastosDiarios(data.gastosDiarios || []);
+                    setPerfilFinanciero(data.perfilFinanciero || { sueldo: '', gastosFijos: '', fondoEmergencia: '' });
                 }
             });
             return unsubscribe;
@@ -391,6 +398,12 @@ function AuthWrapper() {
         setItemEnEdicion(null);
         setPostergada(false);
         setCuotasPagadas('');
+    };
+    const handleGuardarPerfil = (e) => {
+        e.preventDefault();
+        // Guardamos en Firebase (se mezcla con tarjetas y deudas existentes sin borrarlas)
+        saveToFirebase({ perfilFinanciero });
+        setMostrarConfigPerfil(false); // Cerramos el modal
     };
 
     // Funciones críticas: Se bloquean si es Vista General
@@ -690,10 +703,31 @@ function AuthWrapper() {
                         )}
 
                         {/* ASESOR IA (MODO ARGENTINA) */}
-                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-sky-400">
-                            <h2 className="text-xl font-semibold mb-4 text-gray-300 flex items-center gap-2">
-                                🇦🇷 Asesor IA <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">SMART</span>
-                            </h2>
+                        {/* ASESOR IA (MODO ARGENTINA) + PERFIL FINANCIERO */}
+                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-sky-400 relative">
+                            {/* Cabecera con Botón de Configuración */}
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-semibold text-gray-300 flex items-center gap-2">
+                                    🇦🇷 Asesor IA <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">SMART</span>
+                                </h2>
+                                <button
+                                    onClick={() => setMostrarConfigPerfil(true)}
+                                    className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition"
+                                    title="Configurar mis ingresos y gastos"
+                                >
+                                    ⚙️ Mis Datos
+                                </button>
+                            </div>
+
+                            {/* Resumen rápido de capacidad (Solo si hay datos cargados) */}
+                            {perfilFinanciero.sueldo > 0 && (
+                                <div className="mb-4 bg-gray-700/50 p-3 rounded-lg text-xs flex justify-between border border-gray-600">
+                                    <span>Ingreso: <span className="text-green-400">${parseFloat(perfilFinanciero.sueldo).toLocaleString('es-AR')}</span></span>
+                                    <span>Libre Aprox: <span className="text-sky-400">${(perfilFinanciero.sueldo - perfilFinanciero.gastosFijos - resumenTotalGeneral).toLocaleString('es-AR')}</span></span>
+                                </div>
+                            )}
+
+                            {/* Inputs de la Calculadora (Lo que ya tenías) */}
                             <div className="flex flex-col gap-3">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-xs text-gray-400">Contado</label><input type="number" value={calcPrecioContado} onChange={(e) => setCalcPrecioContado(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="$" /></div>
@@ -704,6 +738,7 @@ function AuthWrapper() {
                                     <div><label className="text-xs text-gray-400">Cuotas</label><input type="number" value={calcCantCuotas} onChange={(e) => setCalcCantCuotas(e.target.value)} className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:ring-sky-500" placeholder="#" /></div>
                                 </div>
                                 <button onClick={calcularInflacion} className="bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-bold py-2 rounded transition mt-2 shadow-lg">Analizar Compra</button>
+
                                 {resultadoCalc && (
                                     <div className={`mt-4 p-4 rounded-xl border-2 ${resultadoCalc.veredicto.includes('CUOTAS') ? 'bg-green-900/20 border-green-500' : 'bg-red-900/20 border-red-600'}`}>
                                         <p className="text-2xl font-black text-white">{resultadoCalc.veredicto}</p>
@@ -716,6 +751,57 @@ function AuthWrapper() {
                                 )}
                             </div>
                         </div>
+
+                        {/* MODAL: CONFIGURACIÓN DE PERFIL */}
+                        {mostrarConfigPerfil && (
+                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                                <div className="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl">
+                                    <h3 className="text-2xl font-bold text-white mb-2">Mi Realidad Financiera 💰</h3>
+                                    <p className="text-gray-400 text-sm mb-6">Estos datos son privados y se usan solo para calcular tu capacidad de endeudamiento real.</p>
+
+                                    <form onSubmit={handleGuardarPerfil} className="flex flex-col gap-4">
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-300">Ingreso Mensual Neto (Sueldo)</label>
+                                            <input
+                                                type="number"
+                                                placeholder="Ej: 800000"
+                                                value={perfilFinanciero.sueldo}
+                                                onChange={(e) => setPerfilFinanciero({ ...perfilFinanciero, sueldo: e.target.value })}
+                                                className="w-full p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-sky-500 mt-1"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-300">Gastos Fijos Mensuales</label>
+                                            <p className="text-xs text-gray-500 mb-1">Alquiler, luz, gas, internet, comida base, etc.</p>
+                                            <input
+                                                type="number"
+                                                placeholder="Ej: 350000"
+                                                value={perfilFinanciero.gastosFijos}
+                                                onChange={(e) => setPerfilFinanciero({ ...perfilFinanciero, gastosFijos: e.target.value })}
+                                                className="w-full p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-sky-500"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-300">Fondo de Emergencia (Ahorros)</label>
+                                            <input
+                                                type="number"
+                                                placeholder="¿Cuánto dinero tenés disponible hoy?"
+                                                value={perfilFinanciero.fondoEmergencia}
+                                                onChange={(e) => setPerfilFinanciero({ ...perfilFinanciero, fondoEmergencia: e.target.value })}
+                                                className="w-full p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-sky-500 mt-1"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3 mt-4">
+                                            <button type="submit" className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold p-3 rounded-xl transition">Guardar Datos</button>
+                                            <button type="button" onClick={() => setMostrarConfigPerfil(false)} className="flex-1 bg-gray-600 hover:bg-gray-700 text-white p-3 rounded-xl transition">Cancelar</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* COLUMNA DERECHA: GRÁFICOS */}
