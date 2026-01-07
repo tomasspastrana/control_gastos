@@ -519,39 +519,123 @@ function AuthWrapper() {
 
     const calcularInflacion = (e) => {
         e.preventDefault();
+        // 1. Obtener inputs básicos
         const pContado = parseFloat(calcPrecioContado);
         const pFinanciado = parseFloat(calcPrecioFinanciado);
         const cuotas = parseInt(calcCantCuotas);
         const inf = parseFloat(calcInflacion) / 100;
+
+        // 2. Obtener datos del perfil (con valores por defecto si no existen)
+        const sueldo = parseFloat(perfilFinanciero.sueldo) || 0;
+        const gastos = parseFloat(perfilFinanciero.gastosFijos) || 0;
+        const ahorros = parseFloat(perfilFinanciero.fondoEmergencia) || 0;
+        const deudaActual = resumenTotalGeneral || 0;
+
         if (!pContado || !pFinanciado || !cuotas) return;
 
+        // 3. Cálculos Matemáticos (Valor Presente)
         const valorCuota = pFinanciado / cuotas;
         let valorPresenteTotal = 0;
         for (let i = 1; i <= cuotas; i++) valorPresenteTotal += valorCuota / Math.pow(1 + inf, i);
-
         const diferenciaMatematica = pContado - valorPresenteTotal;
         const convieneMatematicamente = diferenciaMatematica > 0;
 
+        // 4. ANÁLISIS FINANCIERO (El Cerebro Nuevo) 🧠
+        let score = 100; // Empezamos con puntaje perfecto
         let consejos = [];
         let nivelRiesgo = 'BAJO';
+        let impactoMensual = 0; // % del ingreso libre que consume esta cuota
 
-        if (tarjetaActiva) {
-            if (pFinanciado > tarjetaActiva.saldo) { consejos.push("❌ Saldo insuficiente."); nivelRiesgo = 'CRÍTICO'; }
-            else if ((pFinanciado / tarjetaActiva.limite) > 0.5) { consejos.push("⚠️ Consume +50% límite."); nivelRiesgo = 'ALTO'; }
+        // A. Análisis de Capacidad
+        if (sueldo > 0) {
+            const ingresoDisponible = sueldo - gastos - deudaActual;
+            const nuevoIngresoDisponible = ingresoDisponible - valorCuota;
+            impactoMensual = (valorCuota / ingresoDisponible) * 100;
+            const ratioEndeudamientoTotal = ((deudaActual + valorCuota) / sueldo) * 100;
+
+            // Penalizaciones al Score
+            if (nuevoIngresoDisponible < 0) {
+                score -= 50;
+                consejos.push("⛔ No tenés liquidez mensual para pagar esta cuota.");
+                nivelRiesgo = 'CRÍTICO';
+            } else if (nuevoIngresoDisponible < (sueldo * 0.05)) {
+                score -= 30;
+                consejos.push("⚠️ Quedarás con muy poco margen de maniobra mensual.");
+            }
+
+            if (ratioEndeudamientoTotal > 40) {
+                score -= 25;
+                consejos.push("📉 Tus cuotas totales superarían el 40% de tu sueldo.");
+                nivelRiesgo = 'ALTO';
+            } else if (ratioEndeudamientoTotal > 30) {
+                score -= 15;
+                consejos.push("👀 Tus deudas están llegando al límite saludable (30%).");
+            }
+
+            if (impactoMensual > 15) {
+                score -= 10;
+                consejos.push("📦 Esta sola compra ocupa mucho de tu dinero libre.");
+            }
+        } else {
+            consejos.push("ℹ️ Cargá tu sueldo en '⚙️ Mis Datos' para un análisis de riesgo real.");
         }
 
-        let veredicto = '';
-        if (nivelRiesgo === 'CRÍTICO') veredicto = 'IMPOSIBLE';
-        else if (convieneMatematicamente) veredicto = 'CUOTAS (CONVIENE)';
-        else veredicto = 'CONTADO (MEJOR)';
+        // B. Análisis de Fondo de Emergencia
+        if (sueldo > 0 && ahorros < (gastos + deudaActual + valorCuota)) {
+            score -= 10;
+            consejos.push("🛡️ Tu fondo de emergencia es bajo para afrontar imprevistos.");
+        }
+
+        // C. Análisis de Tarjeta (Límite)
+        if (tarjetaActiva) {
+            if (pFinanciado > tarjetaActiva.saldo) {
+                score = 0;
+                consejos.push("❌ Saldo insuficiente en la tarjeta seleccionada.");
+                nivelRiesgo = 'IMPOSIBLE';
+            } else if ((pFinanciado / tarjetaActiva.limite) > 0.5) {
+                score -= 10;
+                consejos.push("💳 Esta compra consume más del 50% de tu límite.");
+            }
+        }
+
+        // D. Análisis Matemático (Bonificación/Penalización)
+        if (convieneMatematicamente) {
+            score += 10; // Suma puntos si le ganas a la inflación
+            consejos.push("✅ Matemáticamente le ganás a la inflación.");
+        } else {
+            score -= 20;
+            consejos.push("💸 Matemáticamente es más barato pagar de contado.");
+        }
+
+        // Limitar Score 0-100
+        score = Math.max(0, Math.min(100, score));
+
+        // 5. Definir Veredicto Final
+        let veredictoTexto = '';
+        let veredictoColor = '';
+
+        if (nivelRiesgo === 'IMPOSIBLE') {
+            veredictoTexto = 'IMPOSIBLE'; veredictoColor = 'text-gray-500';
+        } else if (score >= 80) {
+            veredictoTexto = '🟢 OPORTUNIDAD EXCELENTE'; veredictoColor = 'text-green-400';
+        } else if (score >= 60) {
+            veredictoTexto = '🟡 COMPRA ACEPTABLE'; veredictoColor = 'text-yellow-400';
+        } else if (score >= 40) {
+            veredictoTexto = '🟠 RIESGO MODERADO'; veredictoColor = 'text-orange-400';
+        } else {
+            veredictoTexto = '🔴 NO RECOMENDADO'; veredictoColor = 'text-red-500';
+        }
 
         setResultadoCalc({
             valorPresente: valorPresenteTotal,
             valorNominal: pFinanciado,
-            valorCuotaReal: valorCuota,
             diferencia: diferenciaMatematica,
-            veredicto: veredicto,
-            consejos: consejos
+            valorCuotaReal: valorCuota, // Agregamos esto
+            veredicto: veredictoTexto,
+            veredictoColor: veredictoColor,
+            score: score,
+            consejos: consejos,
+            impacto: impactoMensual
         });
     };
 
@@ -740,13 +824,44 @@ function AuthWrapper() {
                                 <button onClick={calcularInflacion} className="bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-bold py-2 rounded transition mt-2 shadow-lg">Analizar Compra</button>
 
                                 {resultadoCalc && (
-                                    <div className={`mt-4 p-4 rounded-xl border-2 ${resultadoCalc.veredicto.includes('CUOTAS') ? 'bg-green-900/20 border-green-500' : 'bg-red-900/20 border-red-600'}`}>
-                                        <p className="text-2xl font-black text-white">{resultadoCalc.veredicto}</p>
-                                        <div className="bg-gray-800/50 p-2 rounded mt-2 text-xs flex justify-between">
-                                            <span>Dif: <span className={resultadoCalc.diferencia > 0 ? "text-green-400" : "text-red-400"}>$ {Math.abs(resultadoCalc.diferencia).toFixed(0)}</span></span>
-                                            <span>Real: <span className="text-white">$ {resultadoCalc.valorPresente.toFixed(0)}</span></span>
+                                    <div className="mt-4 bg-gray-900/50 p-4 rounded-xl border border-gray-600">
+                                        {/* Cabecera del Veredicto */}
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h3 className={`text-lg font-black ${resultadoCalc.veredictoColor}`}>{resultadoCalc.veredicto}</h3>
+                                            <span className="text-xs text-gray-400 font-mono">Score: {Math.round(resultadoCalc.score)}/100</span>
                                         </div>
-                                        {resultadoCalc.consejos.map((c, i) => <p key={i} className="text-xs text-yellow-200 mt-1">• {c}</p>)}
+
+                                        {/* Barra de Score */}
+                                        <div className="w-full bg-gray-700 rounded-full h-2.5 mb-4">
+                                            <div
+                                                className={`h-2.5 rounded-full transition-all duration-1000 ease-out ${resultadoCalc.score > 60 ? 'bg-green-500' : resultadoCalc.score > 40 ? 'bg-yellow-500' : 'bg-red-600'}`}
+                                                style={{ width: `${resultadoCalc.score}%` }}
+                                            ></div>
+                                        </div>
+
+                                        {/* Datos Duros */}
+                                        <div className="grid grid-cols-2 gap-2 text-xs mb-3 bg-gray-800 p-2 rounded-lg">
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-400">Cuota Real:</span>
+                                                <span className="font-bold text-white">$ {resultadoCalc.valorCuotaReal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-gray-400">Ahorro Real:</span>
+                                                <span className={`${resultadoCalc.diferencia > 0 ? "text-green-400" : "text-red-400"} font-bold`}>
+                                                    {resultadoCalc.diferencia > 0 ? 'Ganás ' : 'Perdés '}
+                                                    $ {Math.abs(resultadoCalc.diferencia).toFixed(0)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Consejos Inteligentes */}
+                                        <div className="space-y-1">
+                                            {resultadoCalc.consejos.map((c, i) => (
+                                                <p key={i} className="text-xs text-gray-300 flex items-start gap-1">
+                                                    <span>•</span> {c}
+                                                </p>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>
