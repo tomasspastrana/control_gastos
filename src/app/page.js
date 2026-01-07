@@ -318,6 +318,27 @@ function AuthWrapper() {
         setMostrarFormularioTarjeta(false);
         setNuevaTarjeta({ nombre: '', limite: '', mostrarSaldo: true });
     }
+    const handleEliminarTarjeta = () => {
+        if (!tarjetaActiva) return;
+
+        // Preguntar confirmación para evitar accidentes
+        const confirmar = window.confirm(
+            `⚠️ ¿Estás seguro de que quieres eliminar la tarjeta "${tarjetaActiva.nombre}"?\n\nSe borrarán permanentemente todas las compras e historial asociados a ella.`
+        );
+
+        if (confirmar) {
+            const tarjetasActualizadas = tarjetas.filter(t => t.nombre !== tarjetaActiva.nombre);
+
+            // Guardamos en Firebase
+            saveToFirebase({ tarjetas: tarjetasActualizadas });
+
+            // Actualizamos estado local
+            setTarjetas(tarjetasActualizadas);
+
+            // Importante: Volver a la vista General para que no intente mostrar la tarjeta borrada
+            setSeleccion('General');
+        }
+    };
 
     const guardarItem = (e) => {
         e.preventDefault();
@@ -611,16 +632,30 @@ function AuthWrapper() {
 
                         {/* SALDO (Solo en tarjeta específica) */}
                         {!esVistaGastosDiarios && !esVistaGeneral && !esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo !== false && (
-                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500">
-                                <div className="flex justify-between items-center mb-2">
+                            <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500 relative">
+                                <div className="flex justify-between items-start mb-2">
                                     <h2 className="text-xl font-semibold text-gray-300">Saldo de {tarjetaActiva.nombre}</h2>
-                                    <button onClick={handleRecalcularSaldo} title="Recalcular saldo" className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition">Recalcular</button>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleRecalcularSaldo}
+                                            title="Recalcular saldo basado en cuotas pendientes"
+                                            className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition"
+                                        >
+                                            Recalcular
+                                        </button>
+                                        <button
+                                            onClick={handleEliminarTarjeta}
+                                            title="Eliminar esta tarjeta"
+                                            className="bg-red-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-red-700 transition flex items-center gap-1"
+                                        >
+                                            🗑️ Eliminar
+                                        </button>
+                                    </div>
                                 </div>
                                 <p className="text-4xl font-extrabold text-green-400">$ {tarjetaActiva.saldo.toLocaleString('es-AR')}</p>
                                 <p className="text-lg text-gray-400 mt-1">Límite: $ {tarjetaActiva.limite.toLocaleString('es-AR')}</p>
                             </div>
                         )}
-
                         {/* RESUMEN MES (Oculto en Gastos Diarios) */}
                         {!esVistaGastosDiarios && (
                             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-blue-500">
