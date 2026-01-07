@@ -587,7 +587,7 @@ function AuthWrapper() {
         }
 
         // C. Análisis de Tarjeta (Límite)
-        if (tarjetaActiva) {
+        {/*if (tarjetaActiva) {
             if (pFinanciado > tarjetaActiva.saldo) {
                 score = 0;
                 consejos.push("❌ Saldo insuficiente en la tarjeta seleccionada.");
@@ -597,6 +597,7 @@ function AuthWrapper() {
                 consejos.push("💳 Esta compra consume más del 50% de tu límite.");
             }
         }
+        */}
 
         // D. Análisis Matemático (Bonificación/Penalización)
         if (convieneMatematicamente) {
@@ -739,7 +740,54 @@ function AuthWrapper() {
                 <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 mt-4">
                     {/* COLUMNA IZQUIERDA: RESÚMENES */}
                     <div className="flex flex-col gap-6">
+                        {/* 0. NUEVA TARJETA: MI SALUD FINANCIERA (Perfil) */}
+                        <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-indigo-500">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-semibold text-gray-300">Mi Base Mensual</h2>
+                                <button
+                                    onClick={() => setMostrarConfigPerfil(true)}
+                                    className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                                >
+                                    ⚙️ Editar
+                                </button>
+                            </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Ingresos */}
+                                <div className="bg-gray-700/30 p-3 rounded-xl border border-gray-700">
+                                    <p className="text-xs text-gray-400 mb-1">Ingreso Neto</p>
+                                    <p className="text-lg sm:text-xl font-bold text-green-400 truncate">
+                                        {perfilFinanciero.sueldo ? `$ ${parseFloat(perfilFinanciero.sueldo).toLocaleString('es-AR')}` : <span className="text-gray-500 text-sm">--</span>}
+                                    </p>
+                                </div>
+
+                                {/* Gastos Fijos */}
+                                <div className="bg-gray-700/30 p-3 rounded-xl border border-gray-700">
+                                    <p className="text-xs text-gray-400 mb-1">Gastos Fijos</p>
+                                    <p className="text-lg sm:text-xl font-bold text-red-400 truncate">
+                                        {perfilFinanciero.gastosFijos ? `$ ${parseFloat(perfilFinanciero.gastosFijos).toLocaleString('es-AR')}` : <span className="text-gray-500 text-sm">--</span>}
+                                    </p>
+                                </div>
+
+                                {/* Fondo de Emergencia (Ocupa todo el ancho) */}
+                                <div className="col-span-2 bg-indigo-900/20 p-3 rounded-xl border border-indigo-500/30 flex justify-between items-center">
+                                    <div>
+                                        <p className="text-xs text-indigo-300 mb-1">Fondo de Emergencia 🛡️</p>
+                                        <p className="text-lg font-bold text-indigo-400">
+                                            {perfilFinanciero.fondoEmergencia ? `$ ${parseFloat(perfilFinanciero.fondoEmergencia).toLocaleString('es-AR')}` : <span className="text-gray-500 text-sm">--</span>}
+                                        </p>
+                                    </div>
+                                    {perfilFinanciero.fondoEmergencia > 0 && perfilFinanciero.gastosFijos > 0 && (
+                                        <div className="text-right">
+                                            <p className="text-xs text-gray-400">Cubres aprox.</p>
+                                            <p className="text-sm font-bold text-white">
+                                                {Math.floor(parseFloat(perfilFinanciero.fondoEmergencia) / (parseFloat(perfilFinanciero.gastosFijos) + resumenTotalGeneral))} Meses
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                         {/* SALDO (Solo en tarjeta específica) */}
                         {!esVistaGastosDiarios && !esVistaGeneral && !esVistaDeudas && tarjetaActiva && tarjetaActiva.mostrarSaldo !== false && (
                             <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full border-t-4 border-teal-500 relative">
@@ -794,23 +842,25 @@ function AuthWrapper() {
                                 <h2 className="text-xl font-semibold text-gray-300 flex items-center gap-2">
                                     🇦🇷 Asesor IA <span className="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded-full">SMART</span>
                                 </h2>
-                                <button
+                            </div>
+                            {/*
+                             <button
                                     onClick={() => setMostrarConfigPerfil(true)}
                                     className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition"
                                     title="Configurar mis ingresos y gastos"
                                 >
                                     ⚙️ Mis Datos
                                 </button>
-                            </div>
+                            */}
 
-                            {/* Resumen rápido de capacidad (Solo si hay datos cargados) */}
+                            {/* Resumen rápido de capacidad (Solo si hay datos cargados) 
                             {perfilFinanciero.sueldo > 0 && (
                                 <div className="mb-4 bg-gray-700/50 p-3 rounded-lg text-xs flex justify-between border border-gray-600">
                                     <span>Ingreso: <span className="text-green-400">${parseFloat(perfilFinanciero.sueldo).toLocaleString('es-AR')}</span></span>
                                     <span>Libre Aprox: <span className="text-sky-400">${(perfilFinanciero.sueldo - perfilFinanciero.gastosFijos - resumenTotalGeneral).toLocaleString('es-AR')}</span></span>
                                 </div>
                             )}
-
+                            */}
                             {/* Inputs de la Calculadora (Lo que ya tenías) */}
                             <div className="flex flex-col gap-3">
                                 <div className="grid grid-cols-2 gap-3">
