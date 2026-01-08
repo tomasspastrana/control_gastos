@@ -1130,68 +1130,50 @@ function AuthWrapper() {
                     <ul className="space-y-4">
                         {(itemsVisualizados || []).map((item, index) => {
                             const realIndex = (itemsActivos || []).indexOf(item);
-
-                            // Formateo de Fecha
                             const fechaObj = item.fecha ? new Date(item.fecha + 'T12:00:00') : new Date();
                             const dia = fechaObj.getDate();
                             const mes = fechaObj.toLocaleString('es-AR', { month: 'short' }).toUpperCase().replace('.', '');
-
                             return (
-                                <li key={index} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-3 sm:p-4 rounded-xl border border-gray-600 gap-3 transition hover:bg-gray-600/50 ${verHistorial ? 'opacity-75' : ''}`}>
-
-                                    {/* IZQUIERDA: Fecha + Info */}
+                                <li key={index} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-700 p-4 rounded-xl border border-gray-600 gap-3 ${verHistorial ? 'opacity-75' : ''}`}>
                                     <div className="flex items-center gap-4 w-full sm:w-auto">
-
                                         {/* Badge de FECHA (Estilo Calendario) */}
                                         <div className={`flex flex-col items-center justify-center p-2 rounded-xl min-w-[60px] text-center border shadow-inner ${esVistaGastosDiarios ? 'bg-emerald-900/40 border-emerald-500/30' : 'bg-gray-800 border-gray-500/30'}`}>
                                             <span className={`text-[10px] font-bold tracking-wider ${esVistaGastosDiarios ? 'text-emerald-400' : 'text-gray-400'}`}>{mes}</span>
                                             <span className="text-2xl font-black text-white leading-none">{dia}</span>
                                         </div>
 
-                                        {/* Detalles del Item */}
                                         <div>
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="font-bold text-lg text-white">{item.descripcion}</p>
-                                                {/* Etiquetas solo si NO son gastos diarios (ya que esos siempre son pagados) */}
-                                                {!esVistaGastosDiarios && item.pagada && <span className="text-[10px] font-bold text-white bg-green-600 px-2 py-0.5 rounded-full">PAGADA</span>}
-                                                {!esVistaGastosDiarios && item.postergada && <span className="text-[10px] font-bold text-black bg-yellow-400 px-2 py-0.5 rounded-full">POSTERGADA</span>}
+                                                <p className="font-bold text-lg ">{item.descripcion}</p>
+                                                {!esVistaGastosDiarios && item.pagada && <span className="text-xs font-bold text-white bg-green-600 px-2 py-1 rounded-full">PAGADA</span>}
+                                                {!esVistaGastosDiarios && item.postergada && <span className="text-xs font-bold text-black bg-yellow-400 px-2 py-1 rounded-full">POSTERGADA</span>}
                                             </div>
-
-                                            <p className="text-xs text-gray-400 mb-1">{item.categoria}</p>
-
-                                            {/* Precios Diferenciados */}
+                                            <p className="text-sm text-gray-400">{item.categoria}</p>
                                             {esVistaGastosDiarios ? (
                                                 <p className="text-xl font-bold text-emerald-400">$ {item.montoTotal.toLocaleString('es-AR')}</p>
                                             ) : (
                                                 <>
-                                                    <p className="text-sm text-gray-300">Total: <span className="font-semibold">$ {item.montoTotal.toLocaleString('es-AR')}</span> ({item.cuotas} cuotas)</p>
-                                                    <p className="text-base text-cyan-300 font-mono mt-1">Cuota: $ {item.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
-                                                    <p className="text-xs text-gray-500 italic">Restantes: {item.cuotasRestantes}</p>
+                                                    <p className="text-base text-gray-200">Total: $ {item.montoTotal.toLocaleString('es-AR')} ({item.cuotas} cuotas)</p>
+                                                    <p className="text-base text-cyan-400">Valor cuota: $ {item.montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                                    <p className="text-sm text-gray-400 italic mt-1">Cuotas restantes: {item.cuotasRestantes}</p>
                                                 </>
                                             )}
+
                                         </div>
                                     </div>
 
-                                    {/* DERECHA: Botones de Acción */}
-                                    <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto justify-end mt-2 sm:mt-0 border-t sm:border-t-0 border-gray-600 pt-2 sm:pt-0">
+                                    <div className="flex flex-row sm:flex-col space-x-2 sm:space-x-0 sm:space-y-2 w-full sm:w-auto justify-end">
+                                        {/* OCULTAMOS ACCIONES SI ESTAMOS EN VISTA GENERAL */}
                                         {!esVistaGeneral && !esVistaGastosDiarios && (
                                             <>
                                                 {!verHistorial && item.cuotasRestantes > 0 && (
-                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-lg text-xs font-bold transition">
-                                                        Pagar
-                                                    </button>
+                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white p-2 rounded-xl text-sm transition font-medium">Pagar Cuota</button>
                                                 )}
-                                                <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500/20 hover:bg-yellow-600 text-yellow-400 hover:text-white border border-yellow-600 p-2 rounded-lg text-xs font-bold transition disabled:opacity-50" disabled={item.pagada && !verHistorial}>
-                                                    {verHistorial ? 'Ver' : 'Edit'}
+                                                <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-50/20 p-2 rounded-xl hover:bg-yellow-600 text-yellow-400 hover:text-white  text-sm transition font-medium disabled:opacity-50" disabled={item.pagada && !verHistorial}>
+                                                    {verHistorial ? 'Ver' : 'Editar'}
                                                 </button>
+                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/200 p-2 rounded-xl hover:bg-red-600 text-red-400 hover:text-white text-sm transition font-medium">Eliminar</button>
                                             </>
-                                        )}
-
-                                        {/* Eliminar (Disponible en todo menos General) */}
-                                        {!esVistaGeneral && (
-                                            <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600 p-2 rounded-lg text-xs font-bold transition">
-                                                ✕
-                                            </button>
                                         )}
                                     </div>
                                 </li>
@@ -1199,9 +1181,8 @@ function AuthWrapper() {
                         })}
                     </ul>
                 ) : (
-                    <div className="text-center py-12 opacity-50">
-                        <p className="text-4xl mb-2">🍃</p>
-                        <p className="text-gray-400 text-lg">Nada por aquí aún.</p>
+                    <div className="text-center py-8">
+                        <p className="text-gray-500 text-lg italic">{verHistorial ? "No tienes compras pagadas en el historial." : "¡Todo limpio! No hay deudas pendientes."}</p>
                     </div>
                 )}
             </div>
