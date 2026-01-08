@@ -278,7 +278,7 @@ function AuthWrapper() {
         itemsVisualizados.forEach(item => {
             if (!item.pagada && item.cuotasRestantes > 0) {
                 // Si está postergada, empezamos a contar desde el índice 1 (próximo mes), si no, desde 0 (este mes)
-                const inicio = item.postergada ? 1 : 0;
+                const inicio = item.postergada ? 2 : 1;
 
                 for (let i = 0; i < item.cuotasRestantes; i++) {
                     const indiceRelativo = inicio + i;
