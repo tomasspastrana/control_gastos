@@ -66,6 +66,8 @@ function AuthWrapper() {
     const [perfilFinanciero, setPerfilFinanciero] = useState({ sueldo: '', gastosFijos: '', fondoEmergencia: '' });
     const [mostrarConfigPerfil, setMostrarConfigPerfil] = useState(false);
 
+    //Estados para la fecha 
+    const [fechaSeleccionada, setFechaSeleccionada] = useState(new Date().toISOString().split('T')[0]);
 
     // 2. CONEXIÓN Y CARGA (Lógica Robusta de Page2)
     useEffect(() => {
@@ -378,7 +380,7 @@ function AuthWrapper() {
             cuotasRestantes: cuotasRestantesNum,
             pagada: cuotasRestantesNum === 0,
             postergada: postergada,
-            fecha: new Date().toISOString().split('T')[0] // Agregamos fecha
+            fecha: fechaSeleccionada// Agregamos fecha
         };
 
         if (esVistaDeudas) {
@@ -410,6 +412,7 @@ function AuthWrapper() {
         setItemEnEdicion(null);
         setPostergada(false);
         setCuotasPagadas('');
+        setFechaSeleccionada(new Date().toISOString().split('T')[0]);
     };
     const handleGuardarPerfil = (e) => {
         e.preventDefault();
@@ -445,6 +448,7 @@ function AuthWrapper() {
             cuotas: itemAEditar.cuotas,
             categoria: itemAEditar.categoria
         });
+        setFechaSeleccionada(itemAEditar.fecha || new Date().toISOString().split('T')[0]);
         setItemEnEdicion(itemIndex);
         setPostergada(itemAEditar.postergada || false);
         const pagadas = itemAEditar.cuotas - itemAEditar.cuotasRestantes;
@@ -1079,14 +1083,24 @@ function AuthWrapper() {
                             montoTotal: parseFloat(nuevoItem.monto),
                             montoCuota: parseFloat(nuevoItem.monto),
                             categoria: nuevoItem.categoria,
-                            fecha: new Date().toISOString().split('T')[0],
+                            fecha: fechaSeleccionada,
                             cuotas: 1, cuotasRestantes: 0, pagada: true
                         };
                         const nuevosGastos = [nuevoGasto, ...gastosDiarios];
                         setGastosDiarios(nuevosGastos);
                         saveToFirebase({ gastosDiarios: nuevosGastos });
                         setNuevoItem({ descripcion: '', monto: '', cuotas: '', categoria: categoriasDisponibles[0] });
+                        setFechaSeleccionada(new Date().toISOString().split('T')[0]);
                     }} className="flex flex-col gap-4">
+                        <div className="flex flex-col">
+                            <label className="text-xs text-gray-400 mb-1 ml-1">Fecha del gasto</label>
+                            <input
+                                type="date"
+                                value={fechaSeleccionada}
+                                onChange={(e) => setFechaSeleccionada(e.target.value)}
+                                className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500"
+                            />
+                        </div>
                         <input type="text" placeholder="¿En qué gastaste?" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500" required />
                         <input type="number" placeholder="Monto ($)" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500" required />
                         <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:ring-emerald-500">{categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select>
@@ -1103,6 +1117,15 @@ function AuthWrapper() {
                         <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
                         <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
                         <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                        <div className="flex flex-col">
+                            <label className="text-xs text-gray-400 mb-1 ml-1">Fecha de compra</label>
+                            <input
+                                type="date"
+                                value={fechaSeleccionada}
+                                onChange={(e) => setFechaSeleccionada(e.target.value)}
+                                className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                            />
+                        </div>
                         <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">{categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select>
                         <div className="flex items-center gap-2 text-gray-300">
                             <input type="checkbox" id="postergada-checkbox" checked={postergada} onChange={(e) => setPostergada(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500" />
@@ -1167,7 +1190,7 @@ function AuthWrapper() {
                                         {!esVistaGeneral && !esVistaGastosDiarios && (
                                             <>
                                                 {!verHistorial && item.cuotasRestantes > 0 && (
-                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-kg text-xs font-bold transition">Pagar</button>
+                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-lg text-xs font-bold transition">Pagar</button>
                                                 )}
                                                 <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500/20 hover:bg-yellow-600 text-yellow-400 hover:text-white border border-yellow-600 p-2 rounded-lg text-xs font-bold transition disabled:opacity-50" disabled={item.pagada && !verHistorial}>
                                                     {verHistorial ? 'Ver' : 'Editar'}
