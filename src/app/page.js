@@ -1190,12 +1190,12 @@ function AuthWrapper() {
                                         {!esVistaGeneral && !esVistaGastosDiarios && (
                                             <>
                                                 {!verHistorial && item.cuotasRestantes > 0 && (
-                                                    {/* <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-lg text-xs font-bold transition">Pagar</button>*/ }
+                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-lg text-xs font-bold transition">Pagar</button>
                                                 )}
                                                 <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500/20 hover:bg-yellow-600 text-yellow-400 hover:text-white border border-yellow-600 p-2 rounded-lg text-xs font-bold transition disabled:opacity-50" disabled={item.pagada && !verHistorial}>
                                                     {verHistorial ? 'Ver' : 'Editar'}
                                                 </button>
-                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600 p-2 rounded-lg text-xs font-bold transition">Eliminar</button>
+                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600 p-2 rounded-lg text-xs font-bold transition">✕</button>
                                             </>
                                         )}
                                     </div>
