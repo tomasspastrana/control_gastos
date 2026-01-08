@@ -264,26 +264,49 @@ function AuthWrapper() {
         return Object.keys(agrupado).map((key) => ({ name: key, value: agrupado[key] })).filter(d => d.value > 0);
     }, [itemsVisualizados]);
 
+    // --- GRÁFICOS (Modificado: Meses Reales) ---
     const datosProyeccion = useMemo(() => {
         if (!itemsVisualizados || itemsVisualizados.length === 0) return [];
-        const meses = {};
-        for (let i = 1; i <= 12; i++) meses[`Mes ${i}`] = 0;
+
+        const NOMBRES_MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const hoy = new Date();
+        const mesActualIndex = hoy.getMonth(); // 0 = Enero, 1 = Febrero...
+
+        // Creamos un array de 12 espacios vacíos para llenar
+        const proyeccion = Array(12).fill(0);
 
         itemsVisualizados.forEach(item => {
             if (!item.pagada && item.cuotasRestantes > 0) {
+                // Si está postergada, empezamos a contar desde el índice 1 (próximo mes), si no, desde 0 (este mes)
                 const inicio = item.postergada ? 1 : 0;
+
                 for (let i = 0; i < item.cuotasRestantes; i++) {
-                    const numeroMes = inicio + i + 1;
-                    if (numeroMes <= 12) meses[`Mes ${numeroMes}`] += item.montoCuota;
+                    const indiceRelativo = inicio + i;
+                    // Solo proyectamos a 12 meses futuro
+                    if (indiceRelativo < 12) {
+                        proyeccion[indiceRelativo] += item.montoCuota;
+                    }
                 }
             }
         });
-        let data = Object.keys(meses).map(key => ({ name: key, total: meses[key] }));
+
+        // Transformamos los datos para el gráfico poniendo los nombres reales
+        let data = proyeccion.map((total, i) => {
+            // Calculamos el nombre del mes rotando según el mes actual
+            const indiceMesReal = (mesActualIndex + i) % 12;
+            return {
+                name: NOMBRES_MESES[indiceMesReal], // "Ene", "Feb", etc.
+                total: total
+            };
+        });
+
+        // Limpiamos los meses vacíos del final para que el gráfico no se vea muy largo sin sentido
         let ultimoMesConDatos = 0;
         data.forEach((d, index) => { if (d.total > 1) ultimoMesConDatos = index; });
+
+        // Mostramos mínimo 3 meses, o hasta donde haya datos
         return data.slice(0, Math.max(3, ultimoMesConDatos + 1));
     }, [itemsVisualizados]);
-
     const datosGastosMes = useMemo(() => {
         if (!esVistaGastosDiarios) return [];
         const hoy = new Date();
@@ -672,6 +695,22 @@ function AuthWrapper() {
             <h1 className="text-3xl sm:text-4xl font-bold mb-4 sm:mb-8 text-center text-teal-400 drop-shadow-lg">
                 Control de Gastos y Deudas 💸
             </h1>
+            {(() => {
+                const diaHoy = new Date().getDate();
+                // Mostrar solo entre el día 1 y el 4
+                if (diaHoy >= 1 && diaHoy <= 4) {
+                    return (
+                        <div className="w-full max-w-sm sm:max-w-md bg-yellow-900/40 border border-yellow-500 text-yellow-200 px-4 py-3 rounded-xl mb-6 flex items-center gap-3 shadow-lg animate-pulse">
+                            <span className="text-2xl">⚠️</span>
+                            <div>
+                                <p className="font-bold text-sm">¡Atención, fecha de cierre!</p>
+                                <p className="text-xs text-yellow-100/80">Recuerda revisar y pagar tus tarjetas antes del vencimiento.</p>
+                            </div>
+                        </div>
+                    );
+                }
+                return null;
+            })()}
 
             {authUserId && (
                 <div className="bg-gray-800 p-4 rounded-xl shadow-md w-full max-w-sm sm:max-w-md mb-8 flex flex-col items-center border-t-4 border-teal-500">
@@ -1113,10 +1152,6 @@ function AuthWrapper() {
                 <div className="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm sm:max-w-md mb-8">
                     <h2 className="text-xl sm:text-2xl font-semibold mb-4 text-gray-300">{itemEnEdicion !== null ? 'Editar' : 'Añadir'} {esVistaDeudas ? 'Deuda' : 'Compra'}</h2>
                     <form onSubmit={guardarItem} className="flex flex-col gap-4">
-                        <input type="text" placeholder="Descripción" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
-                        <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
-                        <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
-                        <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
                         <div className="flex flex-col">
                             <label className="text-xs text-gray-400 mb-1 ml-1">Fecha de compra</label>
                             <input
@@ -1126,6 +1161,11 @@ function AuthWrapper() {
                                 className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
                             />
                         </div>
+                        <input type="text" placeholder="Descripción" value={nuevoItem.descripcion} onChange={(e) => setNuevoItem({ ...nuevoItem, descripcion: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
+                        <input type="number" placeholder="Monto total" value={nuevoItem.monto} onChange={(e) => setNuevoItem({ ...nuevoItem, monto: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required />
+                        <input type="number" placeholder="Número de cuotas (ej: 6)" value={nuevoItem.cuotas} onChange={(e) => setNuevoItem({ ...nuevoItem, cuotas: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+                        <input type="number" placeholder="Cuotas ya pagadas (ej: 2)" value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} className="p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition" />
+
                         <select value={nuevoItem.categoria} onChange={(e) => setNuevoItem({ ...nuevoItem, categoria: e.target.value })} className="p-3 rounded-xl bg-gray-700 text-white w-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">{categoriasDisponibles.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select>
                         <div className="flex items-center gap-2 text-gray-300">
                             <input type="checkbox" id="postergada-checkbox" checked={postergada} onChange={(e) => setPostergada(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-teal-500 focus:ring-teal-500" />
