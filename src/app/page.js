@@ -1167,12 +1167,12 @@ function AuthWrapper() {
                                         {!esVistaGeneral && !esVistaGastosDiarios && (
                                             <>
                                                 {!verHistorial && item.cuotasRestantes > 0 && (
-                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white p-2 rounded-xl text-sm transition font-medium">Pagar Cuota</button>
+                                                    <button onClick={() => handlePagarCuota(realIndex)} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600 p-2 rounded-kg text-xs font-bold transition">Pagar</button>
                                                 )}
-                                                <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-50/20 p-2 rounded-xl hover:bg-yellow-600 text-yellow-400 hover:text-white  text-sm transition font-medium disabled:opacity-50" disabled={item.pagada && !verHistorial}>
+                                                <button onClick={() => iniciarEdicion(realIndex)} className="bg-yellow-500/20 hover:bg-yellow-600 text-yellow-400 hover:text-white border border-yellow-600 p-2 rounded-lg text-xs font-bold transition disabled:opacity-50" disabled={item.pagada && !verHistorial}>
                                                     {verHistorial ? 'Ver' : 'Editar'}
                                                 </button>
-                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/200 p-2 rounded-xl hover:bg-red-600 text-red-400 hover:text-white text-sm transition font-medium">Eliminar</button>
+                                                <button onClick={() => eliminarItem(realIndex)} className="bg-red-600/200px hover:bg-red-600 text-red-400 hover:text-white border border-red-600 p-2 rounded-lg text-xs font-bold transition">Eliminar</button>
                                             </>
                                         )}
                                     </div>
@@ -1181,8 +1181,9 @@ function AuthWrapper() {
                         })}
                     </ul>
                 ) : (
-                    <div className="text-center py-8">
-                        <p className="text-gray-500 text-lg italic">{verHistorial ? "No tienes compras pagadas en el historial." : "¡Todo limpio! No hay deudas pendientes."}</p>
+                    <div className="text-center py-12 opacity-50">
+                        <p className="text-4xl mb-2">🍃</p>
+                        <p className="text-gray-400 text-lg">Nada por aquí aún.</p>
                     </div>
                 )}
             </div>
